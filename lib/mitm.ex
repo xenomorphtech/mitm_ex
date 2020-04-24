@@ -3,9 +3,6 @@ defmodule Mitm do
     # to be removed
     :ssl.start()
 
-    :ets.new(:packets_counter, [:public, :named_table, :ordered_set])
-    :ets.new(:packets_log, [:public, :named_table, :ordered_set])
-
     :ets.new(:routing_table, [:public, :named_table, :ordered_set])
 
     opts = [

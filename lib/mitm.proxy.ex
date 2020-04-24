@@ -25,7 +25,7 @@ end
 defmodule Mitme.Acceptor do
   use GenServer
 
-  def start_link(args) do
+  def start_link(%{port: port} = args) do
     GenServer.start(__MODULE__, args, [])
   end
 
@@ -61,7 +61,7 @@ defmodule Mitme.Acceptor do
 
   def handle_info(
         {:inet_async, listenSocket, _, {:ok, clientSocket}},
-        state = %{params: params}
+        state = %{params: %{type: type} = params}
       ) do
     :prim_inet.async_accept(listenSocket, -1)
     {:ok, pid} = Mitme.Gsm.start(params)
@@ -189,7 +189,8 @@ defmodule Mitme.Gsm do
 
   # test mode
   def handle_info({:pass_socket, clientSocket}, state) do
-    {:ok, {sourceAddr, _sourcePort}} = :inet.peername(clientSocket)
+    {:ok, {sourceAddr, sourcePort}} = :inet.peername(clientSocket)
+    sourceAddrBin = :inet_parse.ntoa(sourceAddr)
 
     IO.inspect({:pass_socket, state})
 
@@ -256,22 +257,17 @@ defmodule Mitme.Gsm do
         nil
     end
 
-    serverSocket = module.on_connect(serverSocket)
+    flow = %{
+      module: module,
+      mode: :raw,
+      sm: %{},
+      dest: serverSocket,
+      source: clientSocket
+    }
 
-    mode = :raw
+    flow = module.on_connect(flow)
 
-    {:noreply,
-     %{
-       module: module,
-       mode: mode,
-       sm: %{},
-       dest: serverSocket,
-       source: clientSocket
-     }}
-  end
-
-  def handle_info(anything, flow = %{module: module}) do
-    module.handle_info(anything, flow)
+    {:noreply, flow}
   end
 
   # sock5 implementation
@@ -311,5 +307,9 @@ defmodule Mitme.Gsm do
     destAddr = {a, b, c, d}
     destAddrBin = :unicode.characters_to_binary(:inet_parse.ntoa(destAddr))
     {destAddrBin, destPort}
+  end
+
+  def handle_info(anything, flow = %{module: module}) do
+    module.handle_info(anything, flow)
   end
 end
