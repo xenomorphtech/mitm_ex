@@ -11,7 +11,7 @@ defmodule Raw do
 
   def on_connect(flow=%{dest: socket}) do
     :inet.setopts(socket, [{:active, true}, :binary])
-    socket
+    flow 
   end
 
   def on_close(_socket, state) do
