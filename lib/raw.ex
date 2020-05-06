@@ -9,7 +9,7 @@ defmodule Raw do
     {address, port}
   end
 
-  def on_connect(socket) do
+  def on_connect(flow=%{dest: socket}) do
     :inet.setopts(socket, [{:active, true}, :binary])
     socket
   end
