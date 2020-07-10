@@ -190,14 +190,14 @@ defmodule Mitme.Gsm do
   # test mode
   def handle_info({:pass_socket, clientSocket}, state) do
     {:ok, {sourceAddr, sourcePort}} = :inet.peername(clientSocket)
-    sourceAddrBin = :inet_parse.ntoa(sourceAddr)
+    sourceAddrBin = sourceAddr |> :inet_parse.ntoa() |> :unicode.characters_to_binary()
 
     IO.inspect({:pass_socket, state})
 
     {destAddrBin, destPort} =
       case state.listener_type do
         :nat ->
-          get_original_destionation(clientSocket)
+          get_original_destination(clientSocket, sourceAddrBin)
 
         :sock5 ->
           sock5_handshake(clientSocket)
@@ -297,16 +297,33 @@ defmodule Mitme.Gsm do
     :gen_tcp.send(clientSocket, <<5, 0, 0, 1, 0, 0, 0, 0, 0, 0>>)
   end
 
-  def get_original_destionation(clientSocket) do
-    # get SO_origdestination
-    {:ok, [{:raw, 0, 80, info}]} = :inet.getopts(clientSocket, [{:raw, 0, 80, 16}])
+  def get_original_destination(clientSocket, source) do
+    case :inet.getopts(clientSocket, [{:raw, 0, 80, 16}]) do
+      {:ok, [{:raw, 0, 80, info}]} ->
+        <<_::integer-size(16), destPort::big-integer-size(16), a::integer-size(8),
+          b::integer-size(8), c::integer-size(8), d::integer-size(8), _::binary>> = info
 
-    <<_::integer-size(16), destPort::big-integer-size(16), a::integer-size(8), b::integer-size(8),
-      c::integer-size(8), d::integer-size(8), _::binary>> = info
+        destAddr = {a, b, c, d}
+        destAddrBin = :unicode.characters_to_binary(:inet_parse.ntoa(destAddr))
+        {destAddrBin, destPort}
 
-    destAddr = {a, b, c, d}
-    destAddrBin = :unicode.characters_to_binary(:inet_parse.ntoa(destAddr))
-    {destAddrBin, destPort}
+      {:ok, []} ->
+        res = :binary.list_to_bin(:os.cmd('sudo /sbin/pfctl -s state'))
+
+        [f | _] =
+          Enum.filter(String.split(res, "\n"), fn x ->
+            String.contains?(x, source)
+          end)
+
+        [a, b, c] = String.split(f, " <- ")
+        [address, port] = String.split(b, ":")
+        a1 = to_charlist(address)
+        {p1, _} = :string.to_integer(port)
+        {a1, p1}
+
+      {type, options} ->
+        raise MatchError, message: {type, options}
+    end
   end
 
   def handle_info(anything, flow = %{module: module}) do
