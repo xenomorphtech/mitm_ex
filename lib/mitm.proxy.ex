@@ -211,42 +211,72 @@ defmodule Mitme.Gsm do
     state = Map.merge(state, router.route(sourceAddr, destAddrBin, destPort))
     module = state.module
 
-    # IO.puts "uplink? #{inspect state[:uplink]}"
+    # IO.pstate[:uplink]uts "uplink? #{inspect state[:uplink]}"
+    uplinks =
+      case state[:uplink] do
+        {_, _} = a -> [a]
+        a -> a
+      end
+
+    IO.inspect({:uplinks, uplinks})
+
     serverSocket =
-      if state[:uplink] != nil do
-        {s5h, s5p} = state[:uplink]
+      case uplinks do
+        [first_uplink | next_uplinks] ->
+          {s5h, s5p} = first_uplink
 
-        {:ok, serverSocket} =
-          :gen_tcp.connect(:binary.bin_to_list(s5h), s5p, [{:active, false}, :binary])
+          {:ok, serverSocket} =
+            :gen_tcp.connect(:binary.bin_to_list(s5h), s5p, [{:active, false}, :binary])
 
-        :gen_tcp.send(serverSocket, <<5, 1, 0>>)
-        {:ok, <<5, 0>>} = :gen_tcp.recv(serverSocket, 0)
+          Enum.each(next_uplinks, fn {destAddrBin, destPort} ->
+            IO.inspect({:connecting_next_uplink, {destAddrBin, destPort}})
+            :gen_tcp.send(serverSocket, <<5, 1, 0>>)
+            {:ok, <<5, 0>>} = :gen_tcp.recv(serverSocket, 0)
 
-        {destAddrBin, destPort} = module.connect_addr(destAddrBin, destPort)
+            len = byte_size(destAddrBin)
 
-        # IO.inspect "connecting via proxy to #{inspect {a,b,c,d}}:#{destPort}"
+            :gen_tcp.send(
+              serverSocket,
+              <<5, 1, 0, 3, len, destAddrBin::binary, destPort::integer-size(16)>>
+            )
 
-        len = byte_size(destAddrBin)
+            {:ok, realsocketreply} = :gen_tcp.recv(serverSocket, 10)
 
-        :gen_tcp.send(
-          serverSocket,
-          <<5, 1, 0, 3, len, destAddrBin::binary, destPort::integer-size(16)>>
-        )
+            if <<5, 0, 0, 1, 0, 0, 0, 0, 0, 0>> != realsocketreply do
+              IO.inspect({"discarted reply from real sock server:", realsocketreply})
+            end
+          end)
+          IO.inspect({:connecting_final_target, {destAddrBin, destPort}})
+         
+          :gen_tcp.send(serverSocket, <<5, 1, 0>>)
+          {:ok, <<5, 0>>} = :gen_tcp.recv(serverSocket, 0)
 
-        {:ok, realsocketreply} = :gen_tcp.recv(serverSocket, 10)
+          {destAddrBin, destPort} = module.connect_addr(destAddrBin, destPort)
 
-        if <<5, 0, 0, 1, 0, 0, 0, 0, 0, 0>> != realsocketreply do
-          IO.inspect({"discarted reply from real sock server:", realsocketreply})
-        end
+          # IO.inspect "connecting via proxy to #{inspect {a,b,c,d}}:#{destPort}"
 
-        # :inet.setopts(serverSocket, [{:active, :true}, :binary])
+          len = byte_size(destAddrBin)
 
-        serverSocket
-      else
-        {:ok, serverSocket} =
-          :gen_tcp.connect(to_charlist(destAddrBin), destPort, [{:active, false}, :binary])
+          :gen_tcp.send(
+            serverSocket,
+            <<5, 1, 0, 3, len, destAddrBin::binary, destPort::integer-size(16)>>
+          )
 
-        serverSocket
+          {:ok, realsocketreply} = :gen_tcp.recv(serverSocket, 10)
+
+          if <<5, 0, 0, 1, 0, 0, 0, 0, 0, 0>> != realsocketreply do
+            IO.inspect({"discarted reply from real sock server:", realsocketreply})
+          end
+
+          # :inet.setopts(serverSocket, [{:active, :true}, :binary])
+
+          serverSocket
+
+        nil ->
+          {:ok, serverSocket} =
+            :gen_tcp.connect(to_charlist(destAddrBin), destPort, [{:active, false}, :binary])
+
+          serverSocket
       end
 
     case state.listener_type do
