@@ -246,12 +246,15 @@ defmodule Mitme.Gsm do
               IO.inspect({"discarted reply from real sock server:", realsocketreply})
             end
           end)
+
           IO.inspect({:connecting_final_target, {destAddrBin, destPort}})
-         
+
           :gen_tcp.send(serverSocket, <<5, 1, 0>>)
           {:ok, <<5, 0>>} = :gen_tcp.recv(serverSocket, 0)
 
           {destAddrBin, destPort} = module.connect_addr(destAddrBin, destPort)
+          Process.put(:dest_addr, destAddrBin)
+          Process.put(:dest_port, destPort)
 
           # IO.inspect "connecting via proxy to #{inspect {a,b,c,d}}:#{destPort}"
 
@@ -273,6 +276,9 @@ defmodule Mitme.Gsm do
           serverSocket
 
         nil ->
+          Process.put(:dest_addr, destAddrBin)
+          Process.put(:dest_port, destPort)
+
           {:ok, serverSocket} =
             :gen_tcp.connect(to_charlist(destAddrBin), destPort, [{:active, false}, :binary])
 
@@ -292,7 +298,9 @@ defmodule Mitme.Gsm do
       mode: :raw,
       sm: %{},
       dest: serverSocket,
-      source: clientSocket
+      source: clientSocket,
+      dest_addr: Process.get(:dest_addr),
+      dest_port: Process.get(:dest_port)
     }
 
     flow = module.on_connect(flow)
