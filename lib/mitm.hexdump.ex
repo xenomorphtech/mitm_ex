@@ -20,14 +20,14 @@ defmodule Mitm.Hexdump do
 
   # server conn
   def proc_packet(side = true, bin, s) do
-    IO.puts("-> #{s.dest_addr} #{s.dest_port}")
+    IO.puts("<- #{s.dest_addr} #{s.dest_port}")
     IO.puts(Hexdump.to_string(bin))
     {:send, bin, s}
   end
 
   # client conn
   def proc_packet(side = false, bin, s) do
-    IO.puts("<- #{s.dest_addr} #{s.dest_port}")
+    IO.puts("-> #{s.dest_addr} #{s.dest_port}")
     IO.puts(Hexdump.to_string(bin))
     {:send, bin, s}
   end
