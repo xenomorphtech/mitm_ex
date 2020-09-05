@@ -276,6 +276,7 @@ defmodule Mitme.Gsm do
           serverSocket
 
         nil ->
+          {destAddrBin, destPort} = module.connect_addr(destAddrBin, destPort)
           Process.put(:dest_addr, destAddrBin)
           Process.put(:dest_port, destPort)
 
