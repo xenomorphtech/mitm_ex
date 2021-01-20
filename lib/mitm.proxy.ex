@@ -100,12 +100,12 @@ defmodule Mitme.Gsm do
   end
 
   def init(params) do
-    IO.puts("starting gsm: #{inspect(params)}")
+    #IO.puts("starting gsm: #{inspect(params)}")
     {:ok, params}
   end
 
   def handle_info({:tcp_closed, _}, state) do
-    IO.puts("connection closed (close)")
+    #IO.puts("connection closed (close)")
     %{dest: servs, source: clients} = state
     :gen_tcp.close(servs)
     :gen_tcp.close(clients)
@@ -123,7 +123,7 @@ defmodule Mitme.Gsm do
     %{dest: servs, source: clients} = state
     :gen_tcp.close(servs)
     :gen_tcp.close(clients)
-    IO.puts("connection closed (error)")
+    #IO.puts("connection closed (error)")
 
     module = state[:module]
 
@@ -140,7 +140,7 @@ defmodule Mitme.Gsm do
 
     # a subtle guess atm
     socket = servs
-    IO.inspect({servs, clients})
+    #IO.inspect({servs, clients})
 
     flow =
       case module.proc_packet(socket == servs, bin, flow) do
@@ -192,7 +192,7 @@ defmodule Mitme.Gsm do
     {:ok, {sourceAddr, sourcePort}} = :inet.peername(clientSocket)
     sourceAddrBin = sourceAddr |> :inet_parse.ntoa() |> :unicode.characters_to_binary()
 
-    IO.inspect({:pass_socket, state})
+    #IO.inspect({:pass_socket, state})
 
     {destAddrBin, destPort} =
       case state.listener_type do
@@ -218,7 +218,7 @@ defmodule Mitme.Gsm do
         a -> a
       end
 
-    IO.inspect({:uplinks, uplinks})
+    #IO.inspect({:uplinks, uplinks})
 
     serverSocket =
       case uplinks do
@@ -247,8 +247,8 @@ defmodule Mitme.Gsm do
             end
           end)
 
-          IO.inspect({:connecting_final_target, {destAddrBin, destPort}})
-
+          #IO.inspect({:connecting_final_target, {destAddrBin, destPort}})
+         
           :gen_tcp.send(serverSocket, <<5, 1, 0>>)
           {:ok, <<5, 0>>} = :gen_tcp.recv(serverSocket, 0)
 
