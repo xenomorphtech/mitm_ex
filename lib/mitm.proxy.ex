@@ -298,8 +298,16 @@ defmodule Mitme.Gsm do
           Process.put(:dest_addr, destAddrBin)
           Process.put(:dest_port, destPort)
 
+          opts = [{:active, false}, :binary]
+	  opts = if source_ip do
+	    [{:ip, source_ip} | opts]
+	   else
+	    opts
+	   end
+	  IO.inspect opts
+ 
           {:ok, serverSocket} =
-            :gen_tcp.connect(to_charlist(destAddrBin), destPort, [{:active, false}, :binary])
+            :gen_tcp.connect(to_charlist(destAddrBin), destPort, opts)
 
           serverSocket
       end
