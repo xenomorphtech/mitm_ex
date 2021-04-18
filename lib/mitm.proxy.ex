@@ -35,13 +35,16 @@ defmodule Mitme.Acceptor do
     module = Map.get(args, :module, Raw)
     router = Map.get(args, :router, Crash)
     listener_type = Map.get(args, :listener_type, :nat)
+    source_ip = Map.get(args, :source_ip, nil)
+
 
     params = %{
       type: type,
       uplink: uplink,
       module: module,
       router: router,
-      listener_type: listener_type
+      listener_type: listener_type,
+      source_ip: source_ip
     }
 
     IO.puts("listen on port #{port} #{type} #{inspect(uplink)}")
@@ -70,9 +73,9 @@ defmodule Mitme.Acceptor do
 
     send(pid, {:pass_socket, clientSocket})
 
-    Process.monitor(pid)
+    #Process.monitor(pid)
 
-    {:noreply, %{state | clients: [pid | state.clients]}}
+    {:noreply, state}
   end
 
   def handle_info({:inet_async, _listenSocket, _, error}, state) do
@@ -194,6 +197,14 @@ defmodule Mitme.Gsm do
 
     #IO.inspect({:pass_socket, state})
 
+    source_ip = case state[:source_ip] do
+      :dynamic ->
+       {:ok, {local_ip, _local_port}} = :inet.sockname clientSocket
+       local_ip
+      x -> x
+    end
+
+
     {destAddrBin, destPort} =
       case state.listener_type do
         :nat ->
@@ -211,7 +222,7 @@ defmodule Mitme.Gsm do
     state = Map.merge(state, router.route(sourceAddr, destAddrBin, destPort))
     module = state.module
 
-    # IO.pstate[:uplink]uts "uplink? #{inspect state[:uplink]}"
+    #  "uplink? #{inspect state[:uplink]}"
     uplinks =
       case state[:uplink] do
         {_, _} = a -> [a]
@@ -224,9 +235,14 @@ defmodule Mitme.Gsm do
       case uplinks do
         [first_uplink | next_uplinks] ->
           {s5h, s5p} = first_uplink
-
+          opts = [{:active, false}, :binary]
+	  opts = if source_ip do
+	    [{:ip, source_ip} | opts]
+	   else
+	    opts
+	   end
           {:ok, serverSocket} =
-            :gen_tcp.connect(:binary.bin_to_list(s5h), s5p, [{:active, false}, :binary])
+            :gen_tcp.connect(:binary.bin_to_list(s5h), s5p, opts)
 
           Enum.each(next_uplinks, fn {destAddrBin, destPort} ->
             IO.inspect({:connecting_next_uplink, {destAddrBin, destPort}})
