@@ -203,6 +203,7 @@ defmodule Mitme.Gsm do
        local_ip
       x -> x
     end
+    IO.inspect {:source_ip, state, source_ip}
 
 
     {destAddrBin, destPort} =
@@ -241,6 +242,7 @@ defmodule Mitme.Gsm do
 	   else
 	    opts
 	   end
+	   IO.inspect opts
           {:ok, serverSocket} =
             :gen_tcp.connect(:binary.bin_to_list(s5h), s5p, opts)
 
