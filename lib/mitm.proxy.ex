@@ -327,10 +327,9 @@ defmodule Mitme.Gsm do
 
   # sock5 implementation
   def sock5_handshake(clientSocket) do
-    {:ok, [5, ver, 0]} = :gen_tcp.recv(clientSocket, 3)
-    if ! (ver in [1,2]) do
-    throw :socks_unknown_version
-    end
+    {:ok, [5, count]} = :gen_tcp.recv(clientSocket, 2)
+    {:ok, auth_methods} = :gen_tcp.recv(clientSocket, count)
+
 
     :gen_tcp.send(clientSocket, <<5, 0>>)
 
