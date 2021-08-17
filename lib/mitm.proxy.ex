@@ -37,7 +37,6 @@ defmodule Mitme.Acceptor do
     listener_type = Map.get(args, :listener_type, :nat)
     source_ip = Map.get(args, :source_ip, nil)
 
-
     params = %{
       type: type,
       uplink: uplink,
@@ -73,7 +72,7 @@ defmodule Mitme.Acceptor do
 
     send(pid, {:pass_socket, clientSocket})
 
-    #Process.monitor(pid)
+    # Process.monitor(pid)
 
     {:noreply, state}
   end
@@ -103,12 +102,12 @@ defmodule Mitme.Gsm do
   end
 
   def init(params) do
-    #IO.puts("starting gsm: #{inspect(params)}")
+    # IO.puts("starting gsm: #{inspect(params)}")
     {:ok, params}
   end
 
   def handle_info({:tcp_closed, _}, state) do
-    #IO.puts("connection closed (close)")
+    # IO.puts("connection closed (close)")
     %{dest: servs, source: clients} = state
     :gen_tcp.close(servs)
     :gen_tcp.close(clients)
@@ -126,7 +125,7 @@ defmodule Mitme.Gsm do
     %{dest: servs, source: clients} = state
     :gen_tcp.close(servs)
     :gen_tcp.close(clients)
-    #IO.puts("connection closed (error)")
+    # IO.puts("connection closed (error)")
 
     module = state[:module]
 
@@ -143,7 +142,7 @@ defmodule Mitme.Gsm do
 
     # a subtle guess atm
     socket = servs
-    #IO.inspect({servs, clients})
+    # IO.inspect({servs, clients})
 
     flow =
       case module.proc_packet(socket == servs, bin, flow) do
@@ -195,16 +194,19 @@ defmodule Mitme.Gsm do
     {:ok, {sourceAddr, sourcePort}} = :inet.peername(clientSocket)
     sourceAddrBin = sourceAddr |> :inet_parse.ntoa() |> :unicode.characters_to_binary()
 
-    #IO.inspect({:pass_socket, state})
+    # IO.inspect({:pass_socket, state})
 
-    source_ip = case state[:source_ip] do
-      :dynamic ->
-       {:ok, {local_ip, _local_port}} = :inet.sockname clientSocket
-       local_ip
-      x -> x
-    end
-    IO.inspect {:source_ip, state, source_ip}
+    source_ip =
+      case state[:source_ip] do
+        :dynamic ->
+          {:ok, {local_ip, _local_port}} = :inet.sockname(clientSocket)
+          local_ip
 
+        x ->
+          x
+      end
+
+    # IO.inspect({:source_ip, state, source_ip})
 
     {destAddrBin, destPort} =
       case state.listener_type do
@@ -215,7 +217,7 @@ defmodule Mitme.Gsm do
           sock5_handshake(clientSocket)
       end
 
-    IO.inspect({:dest, destAddrBin, destPort})
+    # IO.inspect({:dest, destAddrBin, destPort})
 
     :ok = :inet.setopts(clientSocket, [{:active, true}, :binary])
 
@@ -230,54 +232,61 @@ defmodule Mitme.Gsm do
         a -> a
       end
 
-    #IO.inspect({:uplinks, uplinks})
+    # IO.inspect({:uplinks, uplinks})
 
     serverSocket =
       case uplinks do
         uplink when is_map(uplink) ->
-          {:ok, serverSocket} = :gen_tcp.connect('#{uplink.ip}', uplink.port, [{:active, false}, :binary])
-            case uplink[:username] do
-              nil -> :ok = :gen_tcp.send(serverSocket, <<5, 1, 0>>)
-              _ -> :ok = :gen_tcp.send(serverSocket, <<5, 1, 2>>)
-            end
-            {:ok, <<5, auth_method>>} = :gen_tcp.recv(serverSocket, 2, 30_000)
-            case auth_method do
-              0 -> :ok
+          {:ok, serverSocket} =
+            :gen_tcp.connect('#{uplink.ip}', uplink.port, [{:active, false}, :binary])
 
-              2 ->
-                :ok =
-                  :gen_tcp.send(
-                    serverSocket,
-                    <<1, byte_size(uplink.username), uplink.username::binary, byte_size(uplink.password),
-                      uplink.password::binary>>
-                  )
-                {:ok, <<1, 0>>} = :gen_tcp.recv(serverSocket, 2, 30_000)
-            end
+          case uplink[:username] do
+            nil -> :ok = :gen_tcp.send(serverSocket, <<5, 1, 0>>)
+            _ -> :ok = :gen_tcp.send(serverSocket, <<5, 1, 2>>)
+          end
 
-            {destAddrBin, destPort} = module.connect_addr(destAddrBin, destPort)
-            Process.put(:dest_addr, destAddrBin)
-            Process.put(:dest_port, destPort)
+          {:ok, <<5, auth_method>>} = :gen_tcp.recv(serverSocket, 2, 30_000)
 
-            # assume IPV4
-            {:ok, {a, b, c, d}} = :inet.parse_address('#{destAddrBin}')
-            :ok = :gen_tcp.send(serverSocket, <<5, 1, 0, 1, a, b, c, d, destPort::16>>)
-            {:ok, <<5, 0, 0, 1>>} = :gen_tcp.recv(serverSocket, 4, 30_000)
-            {:ok, _} = :gen_tcp.recv(serverSocket, 4, 30_000)
-            {:ok, _} = :gen_tcp.recv(serverSocket, 2, 30_000)
-            serverSocket
+          case auth_method do
+            0 ->
+              :ok
+
+            2 ->
+              :ok =
+                :gen_tcp.send(
+                  serverSocket,
+                  <<1, byte_size(uplink.username), uplink.username::binary,
+                    byte_size(uplink.password), uplink.password::binary>>
+                )
+
+              {:ok, <<1, 0>>} = :gen_tcp.recv(serverSocket, 2, 30_000)
+          end
+
+          {destAddrBin, destPort} = module.connect_addr(destAddrBin, destPort)
+          Process.put(:dest_addr, destAddrBin)
+          Process.put(:dest_port, destPort)
+
+          # assume IPV4
+          {:ok, {a, b, c, d}} = :inet.parse_address('#{destAddrBin}')
+          :ok = :gen_tcp.send(serverSocket, <<5, 1, 0, 1, a, b, c, d, destPort::16>>)
+          {:ok, <<5, 0, 0, 1>>} = :gen_tcp.recv(serverSocket, 4, 30_000)
+          {:ok, _} = :gen_tcp.recv(serverSocket, 4, 30_000)
+          {:ok, _} = :gen_tcp.recv(serverSocket, 2, 30_000)
+          serverSocket
 
         [first_uplink | next_uplinks] ->
           {s5h, s5p} = first_uplink
           opts = [{:active, false}, :binary]
-          opts = if source_ip do
-            [{:ip, source_ip} | opts]
-           else
-            opts
-           end
 
-          IO.inspect opts
-          {:ok, serverSocket} =
-            :gen_tcp.connect(:binary.bin_to_list(s5h), s5p, opts)
+          opts =
+            if source_ip do
+              [{:ip, source_ip} | opts]
+            else
+              opts
+            end
+
+          IO.inspect(opts)
+          {:ok, serverSocket} = :gen_tcp.connect(:binary.bin_to_list(s5h), s5p, opts)
 
           Enum.each(next_uplinks, fn {destAddrBin, destPort} ->
             IO.inspect({:connecting_next_uplink, {destAddrBin, destPort}})
@@ -298,8 +307,8 @@ defmodule Mitme.Gsm do
             end
           end)
 
-          #IO.inspect({:connecting_final_target, {destAddrBin, destPort}})
-         
+          # IO.inspect({:connecting_final_target, {destAddrBin, destPort}})
+
           :gen_tcp.send(serverSocket, <<5, 1, 0>>)
           {:ok, <<5, 0>>} = :gen_tcp.recv(serverSocket, 0)
 
@@ -332,15 +341,17 @@ defmodule Mitme.Gsm do
           Process.put(:dest_port, destPort)
 
           opts = [{:active, false}, :binary]
-      opts = if source_ip do
-        [{:ip, source_ip} | opts]
-       else
-        opts
-       end
-      IO.inspect opts
- 
-          {:ok, serverSocket} =
-            :gen_tcp.connect(to_charlist(destAddrBin), destPort, opts)
+
+          opts =
+            if source_ip do
+              [{:ip, source_ip} | opts]
+            else
+              opts
+            end
+
+          IO.inspect(opts)
+
+          {:ok, serverSocket} = :gen_tcp.connect(to_charlist(destAddrBin), destPort, opts)
 
           serverSocket
       end
@@ -372,7 +383,6 @@ defmodule Mitme.Gsm do
   def sock5_handshake(clientSocket) do
     {:ok, [5, count]} = :gen_tcp.recv(clientSocket, 2)
     {:ok, auth_methods} = :gen_tcp.recv(clientSocket, count)
-
 
     :gen_tcp.send(clientSocket, <<5, 0>>)
 
