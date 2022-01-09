@@ -228,52 +228,15 @@ defmodule Mitme.Gsm do
     #  "uplink? #{inspect state[:uplink]}"
     uplinks =
       case state[:uplink] do
-        {_, _} = a -> [a]
-        a -> a
+        nil -> nil
+        a when is_list(a) -> a
+        a -> [a]
       end
 
-    # IO.inspect({:uplinks, uplinks})
+    #IO.inspect({:uplinks, uplinks})
 
     serverSocket =
       case uplinks do
-        uplink when is_map(uplink) ->
-          {:ok, serverSocket} =
-            :gen_tcp.connect('#{uplink.ip}', uplink.port, [{:active, false}, :binary])
-
-          case uplink[:username] do
-            nil -> :ok = :gen_tcp.send(serverSocket, <<5, 1, 0>>)
-            _ -> :ok = :gen_tcp.send(serverSocket, <<5, 1, 2>>)
-          end
-
-          {:ok, <<5, auth_method>>} = :gen_tcp.recv(serverSocket, 2, 30_000)
-
-          case auth_method do
-            0 ->
-              :ok
-
-            2 ->
-              :ok =
-                :gen_tcp.send(
-                  serverSocket,
-                  <<1, byte_size(uplink.username), uplink.username::binary,
-                    byte_size(uplink.password), uplink.password::binary>>
-                )
-
-              {:ok, <<1, 0>>} = :gen_tcp.recv(serverSocket, 2, 30_000)
-          end
-
-          {destAddrBin, destPort} = module.connect_addr(destAddrBin, destPort)
-          Process.put(:dest_addr, destAddrBin)
-          Process.put(:dest_port, destPort)
-
-          # assume IPV4
-          {:ok, {a, b, c, d}} = :inet.parse_address('#{destAddrBin}')
-          :ok = :gen_tcp.send(serverSocket, <<5, 1, 0, 1, a, b, c, d, destPort::16>>)
-          {:ok, <<5, 0, 0, 1>>} = :gen_tcp.recv(serverSocket, 4, 30_000)
-          {:ok, _} = :gen_tcp.recv(serverSocket, 4, 30_000)
-          {:ok, _} = :gen_tcp.recv(serverSocket, 2, 30_000)
-          serverSocket
-
         [first_uplink | next_uplinks] ->
           {s5h, s5p} = first_uplink
           opts = [{:active, false}, :binary]
@@ -285,53 +248,26 @@ defmodule Mitme.Gsm do
               opts
             end
 
-          IO.inspect(opts)
-          {:ok, serverSocket} = :gen_tcp.connect(:binary.bin_to_list(s5h), s5p, opts)
-
-          Enum.each(next_uplinks, fn {destAddrBin, destPort} ->
-            IO.inspect({:connecting_next_uplink, {destAddrBin, destPort}})
-            :gen_tcp.send(serverSocket, <<5, 1, 0>>)
-            {:ok, <<5, 0>>} = :gen_tcp.recv(serverSocket, 0)
-
-            len = byte_size(destAddrBin)
-
-            :gen_tcp.send(
-              serverSocket,
-              <<5, 1, 0, 3, len, destAddrBin::binary, destPort::integer-size(16)>>
-            )
-
-            {:ok, realsocketreply} = :gen_tcp.recv(serverSocket, 10)
-
-            if <<5, 0, 0, 1, 0, 0, 0, 0, 0, 0>> != realsocketreply do
-              IO.inspect({"discarted reply from real sock server:", realsocketreply})
-            end
-          end)
-
-          # IO.inspect({:connecting_final_target, {destAddrBin, destPort}})
-
-          :gen_tcp.send(serverSocket, <<5, 1, 0>>)
-          {:ok, <<5, 0>>} = :gen_tcp.recv(serverSocket, 0)
-
           {destAddrBin, destPort} = module.connect_addr(destAddrBin, destPort)
           Process.put(:dest_addr, destAddrBin)
           Process.put(:dest_port, destPort)
 
-          # IO.inspect "connecting via proxy to #{inspect {a,b,c,d}}:#{destPort}"
+          # IO.inspect(opts)
+          {:ok, serverSocket} = :gen_tcp.connect(:binary.bin_to_list(s5h), s5p, opts)
 
-          len = byte_size(destAddrBin)
+          last_uplink =
+            if next_uplinks != [] do
+              Enum.reduce(next_uplinks, first_uplink, fn uplink, prev_uplink ->
+                #IO.inspect({:connecting_next_uplink, uplink})
+                host_port = get_proxy_host_port(uplink)
+                :ok = proxy_handshake(serverSocket, prev_uplink, host_port)
+                uplink
+              end)
+            else
+              first_uplink
+            end
 
-          :gen_tcp.send(
-            serverSocket,
-            <<5, 1, 0, 3, len, destAddrBin::binary, destPort::integer-size(16)>>
-          )
-
-          {:ok, realsocketreply} = :gen_tcp.recv(serverSocket, 10)
-
-          if <<5, 0, 0, 1, 0, 0, 0, 0, 0, 0>> != realsocketreply do
-            IO.inspect({"discarted reply from real sock server:", realsocketreply})
-          end
-
-          # :inet.setopts(serverSocket, [{:active, :true}, :binary])
+          :ok = proxy_handshake(serverSocket, last_uplink, {destAddrBin, destPort})
 
           serverSocket
 
@@ -377,6 +313,125 @@ defmodule Mitme.Gsm do
     flow = module.on_connect(flow)
 
     {:noreply, flow}
+  end
+
+  def get_proxy_host_port({a, b}) do
+    {a, b}
+  end
+
+  def get_proxy_host_port(%{ip: ip, port: port}) do
+    {ip, port}
+  end
+
+  def proxy_handshake(serverSocket, %{type: :sock5} = uplink, {destAddrBin, destPort}) do
+    {:ok, serverSocket} =
+      :gen_tcp.connect('#{uplink.ip}', uplink.port, [{:active, false}, :binary])
+
+    case uplink[:username] do
+      nil -> :ok = :gen_tcp.send(serverSocket, <<5, 1, 0>>)
+      _ -> :ok = :gen_tcp.send(serverSocket, <<5, 1, 2>>)
+    end
+
+    {:ok, <<5, auth_method>>} = :gen_tcp.recv(serverSocket, 2, 30_000)
+
+    case auth_method do
+      0 ->
+        :ok
+
+      2 ->
+        :ok =
+          :gen_tcp.send(
+            serverSocket,
+            <<1, byte_size(uplink.username), uplink.username::binary,
+              byte_size(uplink.password), uplink.password::binary>>
+          )
+
+        {:ok, <<1, 0>>} = :gen_tcp.recv(serverSocket, 2, 30_000)
+    end
+
+    # assume IPV4
+    {:ok, {a, b, c, d}} = :inet.parse_address('#{destAddrBin}')
+    :ok = :gen_tcp.send(serverSocket, <<5, 1, 0, 1, a, b, c, d, destPort::16>>)
+    {:ok, <<5, 0, 0, 1>>} = :gen_tcp.recv(serverSocket, 4, 30_000)
+    {:ok, _} = :gen_tcp.recv(serverSocket, 4, 30_000)
+    {:ok, _} = :gen_tcp.recv(serverSocket, 2, 30_000)
+    serverSocket
+  end
+
+  def proxy_handshake(serverSocket, {_s5h, _s5p}, {destAddrBin, destPort}) do
+    :gen_tcp.send(serverSocket, <<5, 1, 0>>)
+    {:ok, <<5, 0>>} = :gen_tcp.recv(serverSocket, 0)
+
+    len = byte_size(destAddrBin)
+
+    :gen_tcp.send(
+      serverSocket,
+      <<5, 1, 0, 3, len, destAddrBin::binary, destPort::integer-size(16)>>
+    )
+
+    {:ok, realsocketreply} = :gen_tcp.recv(serverSocket, 10)
+
+    if <<5, 0, 0, 1, 0, 0, 0, 0, 0, 0>> != realsocketreply do
+      IO.inspect({"discarted reply from real sock server:", realsocketreply})
+    end
+
+    :ok
+  end
+
+  """
+  previous s5 stuff
+  len = byte_size(destAddrBin)
+
+  :gen_tcp.send(
+    serverSocket,
+    <<5, 1, 0, 3, len, destAddrBin::binary, destPort::integer-size(16)>>
+  )
+
+  {:ok, realsocketreply} = :gen_tcp.recv(serverSocket, 10)
+
+  if <<5, 0, 0, 1, 0, 0, 0, 0, 0, 0>> != realsocketreply do
+    IO.inspect({"discarted reply from real sock server:", realsocketreply})
+  end
+
+  # :inet.setopts(serverSocket, [{:active, :true}, :binary])
+  """
+
+  def proxy_handshake(serverSocket, %{type: :http} = proxy, {destAddrBin, destPort}) do
+    socket = serverSocket
+
+    base64 = Base.encode64(<<proxy.username::binary, ":", proxy.password::binary>>)
+    proxy_auth = <<"Basic ", base64::binary>>
+    # proxy_auth = "Proxy-Authorization" <> proxyAuth
+
+    hostPort = <<destAddrBin::binary, ":", Integer.to_string(destPort)::binary>>
+    pConn = <<"keep-alive">>
+
+    proxyRequestBin = [
+      "CONNECT ",
+      hostPort,
+      " HTTP/1.1\r\n",
+      "Host: ",
+      hostPort,
+      "\r\n",
+      "Proxy-Authorization: ",
+      proxy_auth,
+      "\r\n",
+      "Proxy-Connection: ",
+      pConn,
+      "\r\n\r\n"
+    ]
+
+    #IO.inspect(proxyRequestBin)
+
+    :gen_tcp.send(socket, proxyRequestBin)
+
+    timeout = 30000
+
+    {ok, 200, headers, replyBody} = :comsat_core_http.get_response(socket, timeout)
+
+    #IO.inspect({headers, replyBody})
+
+    :ok
   end
 
   # sock5 implementation
