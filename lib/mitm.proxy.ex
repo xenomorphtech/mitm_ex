@@ -96,6 +96,7 @@ end
 
 defmodule Mitme.Gsm do
   use GenServer
+  import Kernel, except: [send: 2]
 
   def start(type) do
     GenServer.start(__MODULE__, type, [])
@@ -106,11 +107,25 @@ defmodule Mitme.Gsm do
     {:ok, params}
   end
 
+  def handle_info({:ssl_closed, _}, state) do
+    %{dest: servs, source: clients} = state
+    con_close(servs)
+    con_close(clients)
+
+    module = state[:module]
+
+    if module do
+      module.on_close(nil, state)
+    end
+
+    {:stop, {:shutdown, :tcp_closed}, state}
+  end
+
   def handle_info({:tcp_closed, _}, state) do
     # IO.puts("connection closed (close)")
     %{dest: servs, source: clients} = state
-    :gen_tcp.close(servs)
-    :gen_tcp.close(clients)
+    con_close(servs)
+    con_close(clients)
 
     module = state[:module]
 
@@ -137,22 +152,18 @@ defmodule Mitme.Gsm do
   end
 
   # {:sslsocket, {:gen_tcp, port, :tls_connection, :undefined}, [#PID<0.180.0>, #PID<0.179.0>]}
-  def handle_info({:ssl, _, bin}, flow = %{mode: :raw, module: module}) do
+  def handle_info({:ssl, socket, bin}, flow = %{mode: :raw, module: module}) do
     %{sm: _sm, dest: servs, source: clients} = flow
-
-    # a subtle guess atm
-    socket = servs
-    # IO.inspect({servs, clients})
 
     flow =
       case module.proc_packet(socket == servs, bin, flow) do
         {:send, bin, flow} ->
           case socket do
             ^servs ->
-              :gen_tcp.send(clients, bin)
+              send(clients, bin)
 
             ^clients ->
-              :gen_tcp.send(servs, bin)
+              send(servs, bin)
           end
 
           flow
@@ -162,6 +173,23 @@ defmodule Mitme.Gsm do
       end
 
     {:noreply, flow}
+  end
+
+  def con_close({:sslsocket, _, _} = socket) do
+    :ssl.close(socket)
+  end
+
+  def con_close({:gen_tcp, _} = socket) do
+    :gen_tcp.close(socket)
+  end
+
+  def send({:sslsocket, _, _} = socket, bin) do
+    IO.inspect({"sending ssl info", bin})
+    :ssl.send(socket, bin)
+  end
+
+  def send({:gen_tcp, _} = socket, bin) do
+    :gen_tcp.send(socket, bin)
   end
 
   def handle_info({:tcp, socket, bin}, flow = %{mode: :raw, module: module}) do
@@ -174,10 +202,10 @@ defmodule Mitme.Gsm do
         {:send, bin, nflow} ->
           case socket do
             ^servs ->
-              :gen_tcp.send(clients, bin)
+              send(clients, bin)
 
             ^clients ->
-              :gen_tcp.send(servs, bin)
+              send(servs, bin)
           end
 
           nflow
@@ -190,36 +218,51 @@ defmodule Mitme.Gsm do
   end
 
   # test mode
-  def handle_info({:pass_socket, clientSocket}, state) do
-    {:ok, {sourceAddr, sourcePort}} = :inet.peername(clientSocket)
+  def handle_info({:pass_socket, orig_clientSocket}, state) do
+    {:ok, {sourceAddr, sourcePort}} = :inet.peername(orig_clientSocket)
     sourceAddrBin = sourceAddr |> :inet_parse.ntoa() |> :unicode.characters_to_binary()
-
-    # IO.inspect({:pass_socket, state})
 
     source_ip =
       case state[:source_ip] do
         :dynamic ->
-          {:ok, {local_ip, _local_port}} = :inet.sockname(clientSocket)
+          {:ok, {local_ip, _local_port}} = :inet.sockname(orig_clientSocket)
           local_ip
 
         x ->
           x
       end
 
-    # IO.inspect({:source_ip, state, source_ip})
-
     {destAddrBin, destPort} =
       case state.listener_type do
         :nat ->
-          get_original_destination(clientSocket, sourceAddrBin)
+          get_original_destination(orig_clientSocket, sourceAddrBin)
 
         :sock5 ->
-          sock5_handshake(clientSocket)
+          sock5_handshake(orig_clientSocket)
       end
 
-    # IO.inspect({:dest, destAddrBin, destPort})
+    # IO.inspect({:pass_socket, state})
+    clientSocket =
+      if state.type == :ssl do
+        IO.inspect("doing ssl handhsake")
 
-    :ok = :inet.setopts(clientSocket, [{:active, true}, :binary])
+        {:ok, socket} =
+          :ssl.handshake(orig_clientSocket, [
+            {:active, true},
+            {:certfile, 'private/_wildcard.kakao.com+2.pem'},
+            {:keyfile, 'private/_wildcard.kakao.com+2-key.pem'}
+          ])
+
+        :ssl.setopts(socket, [{:active, true}, :binary])
+        socket
+      else
+        :ok = :inet.setopts(orig_clientSocket, [{:active, true}, :binary])
+        orig_clientSocket
+      end
+
+    # IO.inspect({:source_ip, state, source_ip})
+
+    # IO.inspect({:dest, destAddrBin, destPort})
 
     router = state[:router]
     state = Map.merge(state, router.route(sourceAddr, destAddrBin, destPort))
@@ -234,6 +277,14 @@ defmodule Mitme.Gsm do
       end
 
     #IO.inspect({:uplinks, uplinks})
+
+    IO.inspect(state[:real_dest])
+
+    destAddrBin =
+      case state[:real_dest] do
+        nil -> destAddrBin
+        x -> x
+      end
 
     serverSocket =
       case uplinks do
@@ -300,7 +351,19 @@ defmodule Mitme.Gsm do
         nil
     end
 
+    serverSocket =
+      if state[:type] == :ssl do
+        IO.inspect "connecting ssl side"
+        {:ok, socket} = :ssl.connect(serverSocket, [{:active, true}])
+        :ssl.setopts(socket, [{:active, true}, :binary])
+        socket
+
+      else
+        serverSocket
+      end
+
     flow = %{
+      type: state[:type],
       module: module,
       mode: :raw,
       sm: %{},

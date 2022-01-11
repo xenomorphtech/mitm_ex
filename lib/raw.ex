@@ -10,7 +10,14 @@ defmodule Raw do
   end
 
   def on_connect(flow = %{dest: socket}) do
-    :inet.setopts(socket, [{:active, true}, :binary])
+    case socket do
+      {:gen_tcp, x} ->
+        :inet.setopts(socket, [{:active, true}, :binary])
+
+      _ ->
+        nil
+    end
+
     flow
   end
 
