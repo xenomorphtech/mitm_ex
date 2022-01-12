@@ -155,6 +155,8 @@ defmodule Mitme.Gsm do
   def handle_info({:ssl, socket, bin}, flow = %{mode: :raw, module: module}) do
     %{sm: _sm, dest: servs, source: clients} = flow
 
+    IO.puts("got ssl info")
+
     flow =
       case module.proc_packet(socket == servs, bin, flow) do
         {:send, bin, flow} ->
@@ -244,6 +246,7 @@ defmodule Mitme.Gsm do
     # IO.inspect({:pass_socket, state})
     clientSocket =
       if state.type == :ssl do
+        #gotta get the sni here
         IO.inspect("doing ssl handhsake")
 
         {:ok, socket} =
@@ -353,9 +356,14 @@ defmodule Mitme.Gsm do
 
     serverSocket =
       if state[:type] == :ssl do
+        sni = case state[:real_dest] do
+         x when is_binary(x) -> :binary.bin_to_list x
+         x -> x
+        end
         IO.inspect("connecting ssl side")
-        {:ok, socket} = :ssl.connect(serverSocket, [{:active, true}, {:verify, :verify_none}])
+        {:ok, socket} = :ssl.connect(serverSocket, [{:active, true}, {:verify, :verify_none}, {:server_name_indication, sni}])
         :ssl.setopts(socket, [{:active, true}, :binary])
+        IO.puts("connected")
         socket
       else
         serverSocket
