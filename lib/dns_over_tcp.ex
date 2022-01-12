@@ -4,8 +4,8 @@ defmodule DNS.Server2 do
 
   use GenServer
 
-  def start do
-    GenServer.start(__MODULE__, [])
+  def start(%{static_names: _, uplink_server: _} = opts) do
+    GenServer.start(__MODULE__, opts)
   end
 
   def stop(server) do
@@ -17,10 +17,11 @@ defmodule DNS.Server2 do
   end
 
   @impl true
-  def init(_) do
+  def init(opts) do
     {:ok, udp_server} = Socket.UDP.open(2053, mode: :active)
 
-    {:ok, %{udp_server: udp_server, callees: %{}}}
+    state = Map.merge(opts, %{udp_server: udp_server, callees: %{}})
+    {:ok, state}
   end
 
   @impl true
@@ -38,25 +39,79 @@ defmodule DNS.Server2 do
     {:noreply, put_in(state.callees[query.header.id], %{from: from, query: query})}
   end
 
-
   @impl true
   def handle_info(
         {:udp, udp_server, host, port, request},
-        %{udp_server: udp_server} = state
+        %{udp_server: udp_server, static_names: static_names} = state
       ) do
-    #IO.inspect(request, limit: 99999)
+    # IO.inspect(request, limit: 99999)
 
     dec = DNS.Packet.parse(request)
     IO.inspect({:request, dec.questions})
 
-    spawn(Worker, :init, [
-      request,
-      {host, port},
-      %{host: "114.114.114.114"},
-      self()
-    ])
+    query = Enum.find(dec.questions, &(&1.type == :A))
+
+    name =
+      case query do
+        %{name: name} ->
+          name
+
+        _ ->
+          nil
+      end
+
+    map = hardcoded = Map.get(static_names, name)
+
+    if !hardcoded do
+      spawn(Worker, :init, [
+        request,
+        {host, port},
+        %{host: state.uplink_server},
+        self()
+      ])
+    else
+      packet = DNS.Packet.to_binary(make_reply(dec.header.id, name, hardcoded))
+      IO.puts("sending crafted response")
+
+      Socket.Datagram.send(
+        udp_server,
+        packet,
+        {host, port}
+      )
+    end
 
     {:noreply, state}
+  end
+
+  def make_reply(id, domain, addr) do
+    %DNS.Packet{
+      additionals: [],
+      answers: [
+        %{
+          addr: addr,
+          domain: domain,
+          ttl: 153,
+          type: :A
+        }
+      ],
+      authorities: [],
+      header: %DNS.Packet.Header{
+        additional_count: 0,
+        answer_count: 1,
+        authoritative_answer: false,
+        authority_count: 0,
+        id: id,
+        operation_code: 0,
+        query_response: true,
+        question_count: 1,
+        recursion_available: true,
+        recursion_desired: true,
+        reserved: 0,
+        response_code: 0,
+        truncated_message: false
+      },
+      questions: [%DNS.Packet.Question{name: domain, type: :A}]
+    }
   end
 
   @impl true
@@ -101,7 +156,8 @@ defmodule DNS.Server2 do
         response,
         dest
       )
-      {:noreply, state}
+
+    {:noreply, state}
   end
 end
 
@@ -110,6 +166,8 @@ defmodule Worker do
     {:ok, tcp_server} = Socket.TCP.connect({host, 53}, mode: :passive, packet: 2)
     :ok = Socket.Stream.send(tcp_server, request)
     {:ok, response} = Socket.Stream.recv(tcp_server)
+    # IO.inspect(response, limit: 9999)
+
     send(parent, {:reply, dest, response})
     Socket.Stream.close(tcp_server)
   end
