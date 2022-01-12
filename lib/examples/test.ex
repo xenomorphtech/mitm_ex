@@ -3,7 +3,6 @@ defmodule TestRouter do
     res =
       case {source, dest, dest_port} do
         {_, dest, 443} ->
-
           rdest =
             case dest do
               "1.2.3.4" ->
@@ -13,8 +12,8 @@ defmodule TestRouter do
                 "session-zinny3.game.kakao.com"
             end
 
-
           IO.inspect({"dest", rdest})
+
           %{
             real_dest: rdest,
             module: Raw,

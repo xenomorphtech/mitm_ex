@@ -249,8 +249,8 @@ defmodule Mitme.Gsm do
         {:ok, socket} =
           :ssl.handshake(orig_clientSocket, [
             {:active, true},
-            {:certfile, 'private/_wildcard.kakao.com+2.pem'},
-            {:keyfile, 'private/_wildcard.kakao.com+2-key.pem'}
+            {:certfile, 'private/cert.pem'},
+            {:keyfile, 'private/key.pem'}
           ])
 
         :ssl.setopts(socket, [{:active, true}, :binary])
@@ -276,7 +276,7 @@ defmodule Mitme.Gsm do
         a -> [a]
       end
 
-    #IO.inspect({:uplinks, uplinks})
+    # IO.inspect({:uplinks, uplinks})
 
     IO.inspect(state[:real_dest])
 
@@ -309,7 +309,7 @@ defmodule Mitme.Gsm do
           last_uplink =
             if next_uplinks != [] do
               Enum.reduce(next_uplinks, first_uplink, fn uplink, prev_uplink ->
-                #IO.inspect({:connecting_next_uplink, uplink})
+                # IO.inspect({:connecting_next_uplink, uplink})
                 host_port = get_proxy_host_port(uplink)
                 :ok = proxy_handshake(serverSocket, prev_uplink, host_port)
                 uplink
@@ -353,11 +353,10 @@ defmodule Mitme.Gsm do
 
     serverSocket =
       if state[:type] == :ssl do
-        IO.inspect "connecting ssl side"
-        {:ok, socket} = :ssl.connect(serverSocket, [{:active, true}])
+        IO.inspect("connecting ssl side")
+        {:ok, socket} = :ssl.connect(serverSocket, [{:active, true}, {:verify, :verify_none}])
         :ssl.setopts(socket, [{:active, true}, :binary])
         socket
-
       else
         serverSocket
       end
@@ -405,8 +404,8 @@ defmodule Mitme.Gsm do
         :ok =
           :gen_tcp.send(
             serverSocket,
-            <<1, byte_size(uplink.username), uplink.username::binary,
-              byte_size(uplink.password), uplink.password::binary>>
+            <<1, byte_size(uplink.username), uplink.username::binary, byte_size(uplink.password),
+              uplink.password::binary>>
           )
 
         {:ok, <<1, 0>>} = :gen_tcp.recv(serverSocket, 2, 30_000)
@@ -484,7 +483,7 @@ defmodule Mitme.Gsm do
       "\r\n\r\n"
     ]
 
-    #IO.inspect(proxyRequestBin)
+    # IO.inspect(proxyRequestBin)
 
     :gen_tcp.send(socket, proxyRequestBin)
 
@@ -492,7 +491,7 @@ defmodule Mitme.Gsm do
 
     {ok, 200, headers, replyBody} = :comsat_core_http.get_response(socket, timeout)
 
-    #IO.inspect({headers, replyBody})
+    # IO.inspect({headers, replyBody})
 
     :ok
   end

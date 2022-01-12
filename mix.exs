@@ -34,7 +34,7 @@ defmodule Mitm.Mixfile do
   # Type "mix help deps" for more examples and options
   defp deps do
     [
-      {:bunt, "~> 0.1.0"}
+      {:dns, git: "https://github.com/dsdshcym/elixir-dns-server.git"}
     ]
   end
 end
