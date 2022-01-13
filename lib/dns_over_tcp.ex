@@ -162,17 +162,17 @@ defmodule DNS.Server2 do
 end
 
 defmodule DNS.TCPWorker do
-  def init(request, dest, connection = %{host: host}, parent) do
+  def init(request, response_dest, connection = %{host: host}, parent) do
     # if proxy connect/handshake here....
 
-    tcp_socket = tcp_connect({host, 53}, connection[:uplinks], connection[:source_ip])
+    {:ok, tcp_socket} = Mitme.Gsm.tcp_connect({host, 53}, connection[:uplinks], connection[:source_ip])
 
-    :ssl.setopts(socket, [{:active, false}, :binary, {:packet, 2}])
-    :ok = :gen_tcp.send(tcp_server, request)
-    {:ok, response} = :gen_tcp.recv(tcp_server)
+    :inet.setopts(tcp_socket, [{:active, false}, :binary, {:packet, 2}])
+    :ok = :gen_tcp.send(tcp_socket, request)
+    {:ok, response} = :gen_tcp.recv(tcp_socket, 0)
     # IO.inspect(response, limit: 9999)
 
-    send(parent, {:reply, dest, response})
-    :gen_tcp.close(tcp_server)
+    send(parent, {:reply, response_dest, response})
+    :gen_tcp.close(tcp_socket)
   end
 end
