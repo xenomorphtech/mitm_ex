@@ -246,7 +246,7 @@ defmodule Mitme.Gsm do
     # IO.inspect({:pass_socket, state})
     clientSocket =
       if state.type == :ssl do
-        #gotta get the sni here
+        # gotta get the sni here
         IO.inspect("doing ssl handhsake")
 
         {:ok, socket} =
@@ -289,62 +289,11 @@ defmodule Mitme.Gsm do
         x -> x
       end
 
-    serverSocket =
-      case uplinks do
-        [first_uplink | next_uplinks] ->
-          {s5h, s5p} = first_uplink
-          opts = [{:active, false}, :binary]
+    {destAddrBin, destPort} = module.connect_addr(destAddrBin, destPort)
+    Process.put(:dest_addr, destAddrBin)
+    Process.put(:dest_port, destPort)
 
-          opts =
-            if source_ip do
-              [{:ip, source_ip} | opts]
-            else
-              opts
-            end
-
-          {destAddrBin, destPort} = module.connect_addr(destAddrBin, destPort)
-          Process.put(:dest_addr, destAddrBin)
-          Process.put(:dest_port, destPort)
-
-          # IO.inspect(opts)
-          {:ok, serverSocket} = :gen_tcp.connect(:binary.bin_to_list(s5h), s5p, opts)
-
-          last_uplink =
-            if next_uplinks != [] do
-              Enum.reduce(next_uplinks, first_uplink, fn uplink, prev_uplink ->
-                # IO.inspect({:connecting_next_uplink, uplink})
-                host_port = get_proxy_host_port(uplink)
-                :ok = proxy_handshake(serverSocket, prev_uplink, host_port)
-                uplink
-              end)
-            else
-              first_uplink
-            end
-
-          :ok = proxy_handshake(serverSocket, last_uplink, {destAddrBin, destPort})
-
-          serverSocket
-
-        nil ->
-          {destAddrBin, destPort} = module.connect_addr(destAddrBin, destPort)
-          Process.put(:dest_addr, destAddrBin)
-          Process.put(:dest_port, destPort)
-
-          opts = [{:active, false}, :binary]
-
-          opts =
-            if source_ip do
-              [{:ip, source_ip} | opts]
-            else
-              opts
-            end
-
-          IO.inspect(opts)
-
-          {:ok, serverSocket} = :gen_tcp.connect(to_charlist(destAddrBin), destPort, opts)
-
-          serverSocket
-      end
+    {:ok, serverSocket} = tcp_connect({destAddrBin, destPort}, uplinks, source_ip)
 
     case state.listener_type do
       :sock5 ->
@@ -356,12 +305,21 @@ defmodule Mitme.Gsm do
 
     serverSocket =
       if state[:type] == :ssl do
-        sni = case state[:real_dest] do
-         x when is_binary(x) -> :binary.bin_to_list x
-         x -> x
-        end
+        sni =
+          case state[:real_dest] do
+            x when is_binary(x) -> :binary.bin_to_list(x)
+            x -> x
+          end
+
         IO.inspect("connecting ssl side")
-        {:ok, socket} = :ssl.connect(serverSocket, [{:active, true}, {:verify, :verify_none}, {:server_name_indication, sni}])
+
+        {:ok, socket} =
+          :ssl.connect(serverSocket, [
+            {:active, true},
+            {:verify, :verify_none},
+            {:server_name_indication, sni}
+          ])
+
         :ssl.setopts(socket, [{:active, true}, :binary])
         IO.puts("connected")
         socket
@@ -383,6 +341,59 @@ defmodule Mitme.Gsm do
     flow = module.on_connect(flow)
 
     {:noreply, flow}
+  end
+
+  def tcp_connect({destAddrBin, destPort}, uplinks, source_ip) do
+    serverSocket =
+      case uplinks do
+        [first_uplink | next_uplinks] ->
+          {s5h, s5p} = first_uplink
+          opts = [{:active, false}, :binary]
+
+          opts =
+            if source_ip do
+              [{:ip, source_ip} | opts]
+            else
+              opts
+            end
+
+          # IO.inspect(opts)
+          {:ok, serverSocket} = :gen_tcp.connect(:binary.bin_to_list(s5h), s5p, opts)
+
+          last_uplink =
+            if next_uplinks != [] do
+              Enum.reduce(next_uplinks, first_uplink, fn uplink, prev_uplink ->
+                # IO.inspect({:connecting_next_uplink, uplink})
+                host_port = get_proxy_host_port(uplink)
+                :ok = proxy_handshake(serverSocket, prev_uplink, host_port)
+                uplink
+              end)
+            else
+              first_uplink
+            end
+
+          :ok = proxy_handshake(serverSocket, last_uplink, {destAddrBin, destPort})
+
+          serverSocket
+
+        nil ->
+          opts = [{:active, false}, :binary]
+
+          opts =
+            if source_ip do
+              [{:ip, source_ip} | opts]
+            else
+              opts
+            end
+
+          IO.inspect(opts)
+
+          {:ok, serverSocket} = :gen_tcp.connect(to_charlist(destAddrBin), destPort, opts)
+
+          serverSocket
+      end
+
+    {:ok, serverSocket}
   end
 
   def get_proxy_host_port({a, b}) do
@@ -412,8 +423,8 @@ defmodule Mitme.Gsm do
         :ok =
           :gen_tcp.send(
             serverSocket,
-            <<1, byte_size(uplink.username), uplink.username::binary, byte_size(uplink.password),
-              uplink.password::binary>>
+            <<1, byte_size(uplink.username), uplink.username::binary,
+              byte_size(uplink.password), uplink.password::binary>>
           )
 
         {:ok, <<1, 0>>} = :gen_tcp.recv(serverSocket, 2, 30_000)

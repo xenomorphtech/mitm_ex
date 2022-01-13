@@ -63,7 +63,7 @@ defmodule DNS.Server2 do
     map = hardcoded = Map.get(static_names, name)
 
     if !hardcoded do
-      spawn(Worker, :init, [
+      spawn(DNS.TCPWorker, :init, [
         request,
         {host, port},
         %{host: state.uplink_server},
@@ -161,14 +161,18 @@ defmodule DNS.Server2 do
   end
 end
 
-defmodule Worker do
+defmodule DNS.TCPWorker do
   def init(request, dest, connection = %{host: host}, parent) do
-    {:ok, tcp_server} = Socket.TCP.connect({host, 53}, mode: :passive, packet: 2)
-    :ok = Socket.Stream.send(tcp_server, request)
-    {:ok, response} = Socket.Stream.recv(tcp_server)
+    # if proxy connect/handshake here....
+
+    tcp_socket = tcp_connect({host, 53}, connection[:uplinks], connection[:source_ip])
+
+    :ssl.setopts(socket, [{:active, false}, :binary, {:packet, 2}])
+    :ok = :gen_tcp.send(tcp_server, request)
+    {:ok, response} = :gen_tcp.recv(tcp_server)
     # IO.inspect(response, limit: 9999)
 
     send(parent, {:reply, dest, response})
-    Socket.Stream.close(tcp_server)
+    :gen_tcp.close(tcp_server)
   end
 end
