@@ -66,7 +66,7 @@ defmodule DNS.Server2 do
       spawn(DNS.TCPWorker, :init, [
         request,
         {host, port},
-        %{host: state.uplink_server},
+        %{host: state.uplink_server, uplinks: state[:proxy]},
         self()
       ])
     else
@@ -176,3 +176,5 @@ defmodule DNS.TCPWorker do
     :gen_tcp.close(tcp_socket)
   end
 end
+
+
