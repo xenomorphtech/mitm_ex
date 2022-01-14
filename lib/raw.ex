@@ -11,11 +11,11 @@ defmodule Raw do
 
   def on_connect(flow = %{dest: socket}) do
     case socket do
-      {:gen_tcp, x} ->
-        :inet.setopts(socket, [{:active, true}, :binary])
+      {:sslsocket, x} ->
 
-      _ ->
         nil
+      _ ->
+        :inet.setopts(socket, [{:active, true}, :binary])
     end
 
     flow
