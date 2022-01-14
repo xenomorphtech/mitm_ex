@@ -12,7 +12,7 @@ defmodule Mitme.Acceptor.Supervisor do
     :ets.new(:mitme_cache, [:public, :named_table, :ordered_set])
 
     children = [
-      worker(DynamicSupervisor, [[strategy: :one_for_one, name: MitmWorkers]], id: :workers)
+      worker(DynamicSupervisor, [[intensity: 10000, period: 100, strategy: :one_for_one, name: MitmWorkers]], id: :workers)
       | Enum.map(args, fn x ->
           worker(Mitme.Acceptor, [x], id: x[:port])
         end)
@@ -193,7 +193,7 @@ defmodule Mitme.Gsm do
   end
 
   def send({:sslsocket, _, _} = socket, bin) do
-    IO.inspect({"sending ssl info", bin})
+    # IO.inspect({"sending ssl info", socket, bin})
     :ssl.send(socket, bin)
   end
 
