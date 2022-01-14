@@ -11,10 +11,12 @@ defmodule Mitme.Acceptor.Supervisor do
 
     :ets.new(:mitme_cache, [:public, :named_table, :ordered_set])
 
-    children =
-      Enum.map(args, fn x ->
-        worker(Mitme.Acceptor, [x], id: x[:port])
-      end)
+    children = [
+      worker(DynamicSupervisor, [[strategy: :one_for_one, name: MitmWorkers]], id: :workers)
+      | Enum.map(args, fn x ->
+          worker(Mitme.Acceptor, [x], id: x[:port])
+        end)
+    ]
 
     IO.inspect(children)
 
@@ -26,7 +28,7 @@ defmodule Mitme.Acceptor do
   use GenServer
 
   def start_link(%{port: port} = args) do
-    GenServer.start(__MODULE__, args, [])
+    GenServer.start_link(__MODULE__, args, [])
   end
 
   def init(%{port: port} = args) do
@@ -66,7 +68,8 @@ defmodule Mitme.Acceptor do
         state = %{params: %{type: type} = params}
       ) do
     :prim_inet.async_accept(listenSocket, -1)
-    {:ok, pid} = Mitme.Gsm.start(params)
+spec = {Mitme.Gsm, params }
+    {:ok, pid} = DynamicSupervisor.start_child MitmWorkers, spec 
     :inet_db.register_socket(clientSocket, :inet_tcp)
     :gen_tcp.controlling_process(clientSocket, pid)
 
@@ -98,8 +101,8 @@ defmodule Mitme.Gsm do
   use GenServer
   import Kernel, except: [send: 2]
 
-  def start(type) do
-    GenServer.start(__MODULE__, type, [])
+  def start_link(type) do
+    GenServer.start_link(__MODULE__, type, [])
   end
 
   def init(params) do
@@ -122,7 +125,7 @@ defmodule Mitme.Gsm do
   end
 
   def handle_info({:tcp_closed, _}, state) do
-    # IO.puts("connection closed (close)")
+    IO.puts("connection closed (close)")
     %{dest: servs, source: clients} = state
     con_close(servs)
     con_close(clients)
@@ -140,7 +143,7 @@ defmodule Mitme.Gsm do
     %{dest: servs, source: clients} = state
     :gen_tcp.close(servs)
     :gen_tcp.close(clients)
-    # IO.puts("connection closed (error)")
+    IO.puts("connection closed (error)")
 
     module = state[:module]
 
@@ -185,6 +188,10 @@ defmodule Mitme.Gsm do
     :gen_tcp.close(socket)
   end
 
+  def con_close(socket) do
+    :gen_tcp.close(socket)
+  end
+
   def send({:sslsocket, _, _} = socket, bin) do
     IO.inspect({"sending ssl info", bin})
     :ssl.send(socket, bin)
@@ -194,9 +201,12 @@ defmodule Mitme.Gsm do
     :gen_tcp.send(socket, bin)
   end
 
+  def send(socket, bin) do
+    :gen_tcp.send(socket, bin)
+  end
+
   def handle_info({:tcp, socket, bin}, flow = %{mode: :raw, module: module}) do
     # proc bin
-
     %{sm: _sm, dest: servs, source: clients} = flow
 
     flow =
@@ -281,7 +291,7 @@ defmodule Mitme.Gsm do
 
     # IO.inspect({:uplinks, uplinks})
 
-    IO.inspect(state[:real_dest])
+    IO.inspect({:real_dest, state[:real_dest]})
 
     destAddrBin =
       case state[:real_dest] do
@@ -290,10 +300,10 @@ defmodule Mitme.Gsm do
       end
 
     {destAddrBin, destPort} = module.connect_addr(destAddrBin, destPort)
-    Process.put(:dest_addr, destAddrBin)
-    Process.put(:dest_port, destPort)
 
     {:ok, serverSocket} = tcp_connect({destAddrBin, destPort}, uplinks, source_ip)
+
+    IO.puts("tcp connected")
 
     case state.listener_type do
       :sock5 ->
@@ -321,7 +331,7 @@ defmodule Mitme.Gsm do
           ])
 
         :ssl.setopts(socket, [{:active, true}, :binary])
-        IO.puts("connected")
+        IO.puts("ssl connected")
         socket
       else
         serverSocket
@@ -334,8 +344,8 @@ defmodule Mitme.Gsm do
       sm: %{},
       dest: serverSocket,
       source: clientSocket,
-      dest_addr: Process.get(:dest_addr),
-      dest_port: Process.get(:dest_port)
+      dest_addr: destAddrBin,
+      dest_port: destPort
     }
 
     flow = module.on_connect(flow)
@@ -573,6 +583,7 @@ defmodule Mitme.Gsm do
   end
 
   def handle_info(anything, flow = %{module: module}) do
+    IO.inspect({:warning, "discarded_message", anything})
     module.handle_info(anything, flow)
   end
 end
