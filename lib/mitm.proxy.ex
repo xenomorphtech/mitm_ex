@@ -353,6 +353,10 @@ defmodule Mitme.Gsm do
     {:noreply, flow}
   end
 
+  def tcp_connect({destAddrBin, destPort}, uplinks = {_, _}, source_ip) do
+     tcp_connect({destAddrBin, destPort}, [uplinks], source_ip)
+  end
+ 
   def tcp_connect({destAddrBin, destPort}, uplinks, source_ip) do
     serverSocket =
       case uplinks do

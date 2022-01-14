@@ -18,7 +18,7 @@ defmodule DNS.Server2 do
 
   @impl true
   def init(opts) do
-    {:ok, udp_server} = :gen_udp.open(2053, active: true)
+    {:ok, udp_server} = :gen_udp.open(2053, active: true, mode: :binary)
 
     state = Map.merge(opts, %{udp_server: udp_server, callees: %{}})
     {:ok, state}
@@ -34,7 +34,7 @@ defmodule DNS.Server2 do
       query
       |> DNS.Packet.to_binary()
 
-    :ok = :gen_udp.send(udp_server, binary, {@root_dns, @default_dns_port})
+    :ok = :gen_udp.send(udp_server, {@root_dns, @default_dns_port}, binary )
 
     {:noreply, put_in(state.callees[query.header.id], %{from: from, query: query})}
   end
@@ -64,7 +64,6 @@ defmodule DNS.Server2 do
 
     IO.puts("dns request: #{name}")
 
-
     if !hardcoded do
       spawn(DNS.TCPWorker, :init, [
         request,
@@ -78,8 +77,8 @@ defmodule DNS.Server2 do
 
       :gen_udp.send(
         udp_server,
-        packet,
-        {host, port}
+        {host, port},
+        packet
       )
     end
 
@@ -140,8 +139,8 @@ defmodule DNS.Server2 do
       :ok =
         :gen_udp.send(
           udp_server,
-          DNS.Packet.to_binary(callee.query),
-          {next_dns_server_ip, @default_dns_port}
+          {next_dns_server_ip, @default_dns_port},
+          DNS.Packet.to_binary(callee.query)
         )
 
       {:noreply, put_in(new_state.callees[response.header.id], callee)}
@@ -156,8 +155,8 @@ defmodule DNS.Server2 do
     :ok =
       :gen_udp.send(
         udp_server,
-        response,
-        dest
+        dest,
+        response
       )
 
     {:noreply, state}
@@ -168,7 +167,8 @@ defmodule DNS.TCPWorker do
   def init(request, response_dest, connection = %{host: host}, parent) do
     # if proxy connect/handshake here....
 
-    {:ok, tcp_socket} = Mitme.Gsm.tcp_connect({host, 53}, connection[:uplinks], connection[:source_ip])
+    {:ok, tcp_socket} =
+      Mitme.Gsm.tcp_connect({host, 53}, connection[:uplinks], connection[:source_ip])
 
     :inet.setopts(tcp_socket, [{:active, false}, :binary, {:packet, 2}])
     :ok = :gen_tcp.send(tcp_socket, request)
@@ -179,5 +179,3 @@ defmodule DNS.TCPWorker do
     :gen_tcp.close(tcp_socket)
   end
 end
-
-
