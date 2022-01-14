@@ -269,7 +269,7 @@ defmodule Mitme.Gsm do
         :ssl.setopts(socket, [{:active, true}, :binary])
         socket
       else
-        :ok = :inet.setopts(orig_clientSocket, [{:active, true}, :binary])
+        :ok = :inet.setopts(orig_clientSocket, [{:active, true}, :binary, {:nodelay, true}])
         orig_clientSocket
       end
 

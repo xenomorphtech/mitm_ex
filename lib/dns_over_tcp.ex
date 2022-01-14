@@ -170,7 +170,8 @@ defmodule DNS.TCPWorker do
     {:ok, tcp_socket} =
       Mitme.Gsm.tcp_connect({host, 53}, connection[:uplinks], connection[:source_ip])
 
-    :inet.setopts(tcp_socket, [{:active, false}, :binary, {:packet, 2}])
+
+    :inet.setopts(tcp_socket, [{:nodelay, true}, {:active, false}, :binary, {:packet, 2}])
     :ok = :gen_tcp.send(tcp_socket, request)
     {:ok, response} = :gen_tcp.recv(tcp_socket, 0)
     # IO.inspect(response, limit: 9999)
