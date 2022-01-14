@@ -4,8 +4,8 @@ defmodule DNS.Server2 do
 
   use GenServer
 
-  def start(%{static_names: _, uplink_server: _} = opts) do
-    GenServer.start(__MODULE__, opts)
+  def start_link(%{static_names: _, uplink_server: _} = opts) do
+    GenServer.start_link(__MODULE__, opts)
   end
 
   def stop(server) do
@@ -18,7 +18,7 @@ defmodule DNS.Server2 do
 
   @impl true
   def init(opts) do
-    {:ok, udp_server} = Socket.UDP.open(2053, mode: :active)
+    {:ok, udp_server} = :gen_udp.open(2053, active: true)
 
     state = Map.merge(opts, %{udp_server: udp_server, callees: %{}})
     {:ok, state}
@@ -34,7 +34,7 @@ defmodule DNS.Server2 do
       query
       |> DNS.Packet.to_binary()
 
-    :ok = Socket.Datagram.send(udp_server, binary, {@root_dns, @default_dns_port})
+    :ok = :gen_udp.send(udp_server, binary, {@root_dns, @default_dns_port})
 
     {:noreply, put_in(state.callees[query.header.id], %{from: from, query: query})}
   end
@@ -62,6 +62,9 @@ defmodule DNS.Server2 do
 
     map = hardcoded = Map.get(static_names, name)
 
+    IO.puts("dns request: #{name}")
+
+
     if !hardcoded do
       spawn(DNS.TCPWorker, :init, [
         request,
@@ -73,7 +76,7 @@ defmodule DNS.Server2 do
       packet = DNS.Packet.to_binary(make_reply(dec.header.id, name, hardcoded))
       IO.puts("sending crafted response")
 
-      Socket.Datagram.send(
+      :gen_udp.send(
         udp_server,
         packet,
         {host, port}
@@ -135,7 +138,7 @@ defmodule DNS.Server2 do
         |> Enum.find(&match?(%{domain: ^next_dns_server_domain, type: :A}, &1))
 
       :ok =
-        Socket.Datagram.send(
+        :gen_udp.send(
           udp_server,
           DNS.Packet.to_binary(callee.query),
           {next_dns_server_ip, @default_dns_port}
@@ -151,7 +154,7 @@ defmodule DNS.Server2 do
         %{udp_server: udp_server} = state
       ) do
     :ok =
-      Socket.Datagram.send(
+      :gen_udp.send(
         udp_server,
         response,
         dest
