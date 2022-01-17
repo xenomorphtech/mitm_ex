@@ -12,7 +12,11 @@ defmodule Mitme.Acceptor.Supervisor do
     :ets.new(:mitme_cache, [:public, :named_table, :ordered_set])
 
     children = [
-      worker(DynamicSupervisor, [[intensity: 10000, period: 100, strategy: :one_for_one, name: MitmWorkers]], id: :workers)
+      worker(
+        DynamicSupervisor,
+        [[intensity: 10000, period: 100, strategy: :one_for_one, name: MitmWorkers]],
+        id: :workers
+      )
       | Enum.map(args, fn x ->
           worker(Mitme.Acceptor, [x], id: x[:port])
         end)
@@ -68,8 +72,8 @@ defmodule Mitme.Acceptor do
         state = %{params: %{type: type} = params}
       ) do
     :prim_inet.async_accept(listenSocket, -1)
-spec = {Mitme.Gsm, params }
-    {:ok, pid} = DynamicSupervisor.start_child MitmWorkers, spec 
+    spec = {Mitme.Gsm, params}
+    {:ok, pid} = DynamicSupervisor.start_child(MitmWorkers, spec)
     :inet_db.register_socket(clientSocket, :inet_tcp)
     :gen_tcp.controlling_process(clientSocket, pid)
 
@@ -354,14 +358,14 @@ defmodule Mitme.Gsm do
   end
 
   def tcp_connect({destAddrBin, destPort}, uplinks = {_, _}, source_ip) do
-     tcp_connect({destAddrBin, destPort}, [uplinks], source_ip)
+    tcp_connect({destAddrBin, destPort}, [uplinks], source_ip)
   end
- 
+
   def tcp_connect({destAddrBin, destPort}, uplinks, source_ip) do
     serverSocket =
       case uplinks do
         [first_uplink | next_uplinks] ->
-          {s5h, s5p} = first_uplink
+          {s5h, s5p} = get_proxy_host_port(first_uplink)
           opts = [{:active, false}, :binary]
 
           opts =
