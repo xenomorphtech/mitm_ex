@@ -591,7 +591,7 @@ defmodule Mitme.Gsm do
   end
 
   def handle_info(anything, flow = %{module: module}) do
-    IO.inspect({:warning, "discarded_message", anything})
+    #IO.inspect({:warning, "discarded_message", anything})
     module.handle_info(anything, flow)
   end
 end
