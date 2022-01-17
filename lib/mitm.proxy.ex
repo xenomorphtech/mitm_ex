@@ -14,7 +14,7 @@ defmodule Mitme.Acceptor.Supervisor do
     children = [
       worker(
         DynamicSupervisor,
-        [[intensity: 10000, period: 100, strategy: :one_for_one, name: MitmWorkers]],
+        [[max_restarts: 10000, seconds: 1, strategy: :one_for_one, name: MitmWorkers]],
         id: :workers
       )
       | Enum.map(args, fn x ->
@@ -115,6 +115,7 @@ defmodule Mitme.Gsm do
   end
 
   def handle_info({:ssl_closed, _}, state) do
+    IO.puts("ssl connection closed (close)")
     %{dest: servs, source: clients} = state
     con_close(servs)
     con_close(clients)
@@ -295,7 +296,7 @@ defmodule Mitme.Gsm do
 
     # IO.inspect({:uplinks, uplinks})
 
-    IO.inspect({:real_dest, state[:real_dest]})
+    IO.inspect({:real_dest, state[:real_dest], state})
 
     destAddrBin =
       case state[:real_dest] do
@@ -591,7 +592,7 @@ defmodule Mitme.Gsm do
   end
 
   def handle_info(anything, flow = %{module: module}) do
-    #IO.inspect({:warning, "discarded_message", anything})
+    # IO.inspect({:warning, "discarded_message", anything})
     module.handle_info(anything, flow)
   end
 end
