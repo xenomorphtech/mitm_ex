@@ -12,8 +12,8 @@ defmodule Raw do
   def on_connect(flow = %{dest: socket}) do
     case socket do
       {:sslsocket, x} ->
-
         nil
+
       _ ->
         :inet.setopts(socket, [{:active, true}, :binary])
     end

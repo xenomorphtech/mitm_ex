@@ -34,7 +34,7 @@ defmodule DNS.Server2 do
       query
       |> DNS.Packet.to_binary()
 
-    :ok = :gen_udp.send(udp_server, {@root_dns, @default_dns_port}, binary )
+    :ok = :gen_udp.send(udp_server, {@root_dns, @default_dns_port}, binary)
 
     {:noreply, put_in(state.callees[query.header.id], %{from: from, query: query})}
   end
@@ -169,7 +169,6 @@ defmodule DNS.TCPWorker do
 
     {:ok, tcp_socket} =
       Mitme.Gsm.tcp_connect({host, 53}, connection[:uplinks], connection[:source_ip])
-
 
     :inet.setopts(tcp_socket, [{:nodelay, true}, {:active, false}, :binary, {:packet, 2}])
     :ok = :gen_tcp.send(tcp_socket, request)

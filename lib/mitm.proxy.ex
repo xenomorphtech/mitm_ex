@@ -424,8 +424,8 @@ defmodule Mitme.Gsm do
   end
 
   def proxy_handshake(serverSocket, %{type: :sock5} = uplink, {destAddrBin, destPort}) do
-    {:ok, serverSocket} =
-      :gen_tcp.connect('#{uplink.ip}', uplink.port, [{:active, false}, :binary])
+    # {:ok, serverSocket} =
+    #   :gen_tcp.connect('#{uplink.ip}', uplink.port, [{:active, false}, :binary])
 
     case uplink[:username] do
       nil -> :ok = :gen_tcp.send(serverSocket, <<5, 1, 0>>)
@@ -433,6 +433,13 @@ defmodule Mitme.Gsm do
     end
 
     {:ok, <<5, auth_method>>} = :gen_tcp.recv(serverSocket, 2, 30_000)
+
+    # 00000000  05 01 02                                           ...
+    #    00000000  05 02                                              ..
+    # 00000003  01 06 38 38 38 38 38 38  06 38 38 38 38 38 38      ..888888 .888888
+    #    00000002  01 00                                              ..
+    # 00000012  05 03 00 01 00 00 00 00  00 00                     ........ ..
+    #    00000004  05 00 00 01 0a 00 00 04  d0 2e                     ........ ..
 
     case auth_method do
       0 ->
@@ -442,8 +449,8 @@ defmodule Mitme.Gsm do
         :ok =
           :gen_tcp.send(
             serverSocket,
-            <<1, byte_size(uplink.username), uplink.username::binary,
-              byte_size(uplink.password), uplink.password::binary>>
+            <<1, byte_size(uplink.username), uplink.username::binary, byte_size(uplink.password),
+              uplink.password::binary>>
           )
 
         {:ok, <<1, 0>>} = :gen_tcp.recv(serverSocket, 2, 30_000)
@@ -455,7 +462,8 @@ defmodule Mitme.Gsm do
     {:ok, <<5, 0, 0, 1>>} = :gen_tcp.recv(serverSocket, 4, 30_000)
     {:ok, _} = :gen_tcp.recv(serverSocket, 4, 30_000)
     {:ok, _} = :gen_tcp.recv(serverSocket, 2, 30_000)
-    serverSocket
+
+    :ok
   end
 
   def proxy_handshake(serverSocket, {_s5h, _s5p}, {destAddrBin, destPort}) do
