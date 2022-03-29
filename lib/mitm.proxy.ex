@@ -310,14 +310,6 @@ defmodule Mitme.Gsm do
 
     IO.puts("tcp connected")
 
-    case state.listener_type do
-      :sock5 ->
-        sock5_notify_connected(clientSocket)
-
-      _ ->
-        nil
-    end
-
     serverSocket =
       if state[:type] == :ssl do
         sni =
@@ -336,11 +328,19 @@ defmodule Mitme.Gsm do
           ])
 
         :ssl.setopts(socket, [{:active, true}, :binary])
-        IO.puts("ssl connected")
+        IO.puts("serverside: ssl connected")
         socket
       else
         serverSocket
       end
+
+    case state.listener_type do
+      :sock5 ->
+        sock5_notify_connected(clientSocket)
+
+      _ ->
+        nil
+    end
 
     flow = %{
       type: state[:type],
@@ -449,16 +449,18 @@ defmodule Mitme.Gsm do
         :ok =
           :gen_tcp.send(
             serverSocket,
-            <<1, byte_size(uplink.username), uplink.username::binary, byte_size(uplink.password),
-              uplink.password::binary>>
+            <<1, byte_size(uplink.username), uplink.username::binary,
+              byte_size(uplink.password), uplink.password::binary>>
           )
 
         {:ok, <<1, 0>>} = :gen_tcp.recv(serverSocket, 2, 30_000)
     end
 
     # assume IPV4
-    {:ok, {a, b, c, d}} = :inet.parse_address('#{destAddrBin}')
-    :ok = :gen_tcp.send(serverSocket, <<5, 1, 0, 1, a, b, c, d, destPort::16>>)
+   
+    len = byte_size(destAddrBin)
+
+    :ok = :gen_tcp.send(serverSocket, <<5, 1, 0, 3, len, destAddrBin::binary, destPort::16>>)
     {:ok, <<5, 0, 0, 1>>} = :gen_tcp.recv(serverSocket, 4, 30_000)
     {:ok, _} = :gen_tcp.recv(serverSocket, 4, 30_000)
     {:ok, _} = :gen_tcp.recv(serverSocket, 2, 30_000)
