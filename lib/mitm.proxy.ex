@@ -423,7 +423,7 @@ defmodule Mitme.Gsm do
     {ip, port}
   end
 
-  def proxy_handshake(serverSocket, %{type: :sock5} = uplink, {destAddrBin, destPort}) do
+  def proxy_handshake(serverSocket, %{type: :socks5} = uplink, {destAddrBin, destPort}) do
     # {:ok, serverSocket} =
     #   :gen_tcp.connect('#{uplink.ip}', uplink.port, [{:active, false}, :binary])
 
