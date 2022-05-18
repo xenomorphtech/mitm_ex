@@ -249,10 +249,11 @@ defmodule Mitme.Gsm do
           x
       end
 
-    {destAddrBin, destPort} =
+    {destAddrBin, destPort, auth} =
       case state.listener_type do
         :nat ->
-          get_original_destination(orig_clientSocket, sourceAddrBin)
+          {a, b} = get_original_destination(orig_clientSocket, sourceAddrBin)
+          {a, b, nil}
 
         :sock5 ->
           sock5_handshake(orig_clientSocket)
@@ -283,7 +284,16 @@ defmodule Mitme.Gsm do
     # IO.inspect({:dest, destAddrBin, destPort})
 
     router = state[:router]
-    state = Map.merge(state, router.route(sourceAddr, destAddrBin, destPort))
+    state = Map.put(state, :proxy_auth, auth)
+
+    state =
+      try do
+        Map.merge(state, router.route(state, sourceAddr, destAddrBin, destPort))
+      catch
+        :error, :undef ->
+          Map.merge(state, router.route(sourceAddr, destAddrBin, destPort))
+      end
+
     module = state.module
 
     #  "uplink? #{inspect state[:uplink]}"
@@ -449,15 +459,15 @@ defmodule Mitme.Gsm do
         :ok =
           :gen_tcp.send(
             serverSocket,
-            <<1, byte_size(uplink.username), uplink.username::binary,
-              byte_size(uplink.password), uplink.password::binary>>
+            <<1, byte_size(uplink.username), uplink.username::binary, byte_size(uplink.password),
+              uplink.password::binary>>
           )
 
         {:ok, <<1, 0>>} = :gen_tcp.recv(serverSocket, 2, 30_000)
     end
 
     # assume IPV4
-   
+
     len = byte_size(destAddrBin)
 
     :ok = :gen_tcp.send(serverSocket, <<5, 1, 0, 3, len, destAddrBin::binary, destPort::16>>)
@@ -549,7 +559,23 @@ defmodule Mitme.Gsm do
     {:ok, [5, count]} = :gen_tcp.recv(clientSocket, 2)
     {:ok, auth_methods} = :gen_tcp.recv(clientSocket, count)
 
-    :gen_tcp.send(clientSocket, <<5, 0>>)
+    auth =
+      if 2 in auth_methods do
+        :gen_tcp.send(clientSocket, <<5, 2>>)
+        {:ok, [1, size]} = :gen_tcp.recv(clientSocket, 2)
+        {:ok, username} = :gen_tcp.recv(clientSocket, size)
+        {:ok, [psize]} = :gen_tcp.recv(clientSocket, 1)
+        {:ok, pass} = :gen_tcp.recv(clientSocket, psize)
+
+        :gen_tcp.send(clientSocket, <<1, 0>>)
+
+        {username, pass}
+      else
+        :gen_tcp.send(clientSocket, <<5, 0>>)
+        nil
+      end
+
+    IO.inspect(auth)
 
     {:ok, moredata} = :gen_tcp.recv(clientSocket, 0)
 
@@ -564,7 +590,7 @@ defmodule Mitme.Gsm do
           {addr, port, v, <<5, 1, 0, 1, a, b, c, d, port::integer-size(16)>>}
       end
 
-    {destAddr, destPort}
+    {destAddr, destPort, auth}
   end
 
   def sock5_notify_connected(clientSocket) do
