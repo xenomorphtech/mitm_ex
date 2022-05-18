@@ -360,7 +360,8 @@ defmodule Mitme.Gsm do
       dest: serverSocket,
       source: clientSocket,
       dest_addr: destAddrBin,
-      dest_port: destPort
+      dest_port: destPort,
+      proxy_auth: auth
     }
 
     flow = module.on_connect(flow)
