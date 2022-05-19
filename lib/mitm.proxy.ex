@@ -570,7 +570,7 @@ defmodule Mitme.Gsm do
 
         :gen_tcp.send(clientSocket, <<1, 0>>)
 
-        {username, pass}
+        {:binary.list_to_bin(username), :binary.list_to_bin(pass)}
       else
         :gen_tcp.send(clientSocket, <<5, 0>>)
         nil
