@@ -163,7 +163,7 @@ defmodule Mitme.Gsm do
   def handle_info({:ssl, socket, bin}, flow = %{mode: :raw, module: module}) do
     %{sm: _sm, dest: servs, source: clients} = flow
 
-    IO.puts("got ssl info")
+    #    IO.puts("got ssl info")
 
     flow =
       case module.proc_packet(socket == servs, bin, flow) do
@@ -259,7 +259,36 @@ defmodule Mitme.Gsm do
           sock5_handshake(orig_clientSocket)
       end
 
-    # IO.inspect({:pass_socket, state})
+    #for ssl:
+    #1.router
+    #2.sock5_notify
+    #3.do ssl handhsake
+    #4.ssl connect
+
+    #otherwise: revision number 94e51a681175cb7006971d0a70697db2831a328c
+    #     IO.inspect({:pass_socket, state})
+
+    router = state[:router]
+    state = Map.put(state, :proxy_auth, auth)
+
+    state =
+      try do
+        Map.merge(state, router.route(state, sourceAddr, destAddrBin, destPort))
+      catch
+        :error, :undef ->
+          Map.merge(state, router.route(sourceAddr, destAddrBin, destPort))
+      end
+
+    module = state.module
+
+    case state.listener_type do
+      :sock5 ->
+        sock5_notify_connected(orig_clientSocket)
+
+      _ ->
+        nil
+    end
+
     clientSocket =
       if state.type == :ssl do
         # gotta get the sni here
@@ -282,19 +311,6 @@ defmodule Mitme.Gsm do
     # IO.inspect({:source_ip, state, source_ip})
 
     # IO.inspect({:dest, destAddrBin, destPort})
-
-    router = state[:router]
-    state = Map.put(state, :proxy_auth, auth)
-
-    state =
-      try do
-        Map.merge(state, router.route(state, sourceAddr, destAddrBin, destPort))
-      catch
-        :error, :undef ->
-          Map.merge(state, router.route(sourceAddr, destAddrBin, destPort))
-      end
-
-    module = state.module
 
     #  "uplink? #{inspect state[:uplink]}"
     uplinks =
@@ -343,14 +359,6 @@ defmodule Mitme.Gsm do
       else
         serverSocket
       end
-
-    case state.listener_type do
-      :sock5 ->
-        sock5_notify_connected(clientSocket)
-
-      _ ->
-        nil
-    end
 
     flow = %{
       type: state[:type],
