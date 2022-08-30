@@ -165,8 +165,14 @@ defmodule Mitme.Gsm do
 
     #    IO.puts("got ssl info")
 
+    side =
+      case socket do
+        ^servs -> :server
+        ^clients -> :client
+      end
+
     flow =
-      case module.proc_packet(socket == servs, bin, flow) do
+      case module.proc_packet(side, bin, flow) do
         {:send, bin, flow} ->
           case socket do
             ^servs ->
@@ -214,8 +220,14 @@ defmodule Mitme.Gsm do
     # proc bin
     %{sm: _sm, dest: servs, source: clients} = flow
 
+    side =
+      case socket do
+        ^servs -> :server
+        ^clients -> :client
+      end
+
     flow =
-      case module.proc_packet(socket == servs, bin, flow) do
+      case module.proc_packet(side, bin, flow) do
         {:send, bin, nflow} ->
           case socket do
             ^servs ->
@@ -259,13 +271,13 @@ defmodule Mitme.Gsm do
           sock5_handshake(orig_clientSocket)
       end
 
-    #for ssl:
-    #1.router
-    #2.sock5_notify
-    #3.do ssl handhsake
-    #4.ssl connect
+    # for ssl:
+    # 1.router
+    # 2.sock5_notify
+    # 3.do ssl handhsake
+    # 4.ssl connect
 
-    #otherwise: revision number 94e51a681175cb7006971d0a70697db2831a328c
+    # otherwise: revision number 94e51a681175cb7006971d0a70697db2831a328c
     #     IO.inspect({:pass_socket, state})
 
     router = state[:router]
