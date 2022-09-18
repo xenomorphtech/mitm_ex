@@ -334,7 +334,7 @@ defmodule Mitme.Gsm do
 
     # IO.inspect({:uplinks, uplinks})
 
-    IO.inspect({:real_dest, state[:real_dest], state})
+    #IO.inspect({:real_dest, state[:real_dest], state})
 
     destAddrBin =
       case state[:real_dest] do
@@ -512,8 +512,11 @@ defmodule Mitme.Gsm do
 
     {:ok, realsocketreply} = :gen_tcp.recv(serverSocket, 10)
 
-    if <<5, 0, 0, 1, 0, 0, 0, 0, 0, 0>> != realsocketreply do
-      IO.inspect({"discarted reply from real sock server:", realsocketreply})
+    case realsocketreply do
+      <<5, 0, 0, 1, _, _, _, _, _, _>> -> 
+        nil
+      _ ->
+        IO.inspect({"discarted reply from real sock server:", realsocketreply})
     end
 
     :ok
