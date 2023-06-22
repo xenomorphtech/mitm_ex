@@ -492,9 +492,23 @@ defmodule Mitme.Gsm do
     len = byte_size(destAddrBin)
 
     :ok = :gen_tcp.send(serverSocket, <<5, 1, 0, 3, len, destAddrBin::binary, destPort::16>>)
-    {:ok, <<5, 0, 0, 1>>} = :gen_tcp.recv(serverSocket, 4, 30_000)
-    {:ok, _} = :gen_tcp.recv(serverSocket, 4, 30_000)
-    {:ok, _} = :gen_tcp.recv(serverSocket, 2, 30_000)
+    {:ok, <<5, 0, 0, type>>} = :gen_tcp.recv(serverSocket, 4, 30_000)
+
+    case type do
+      # ipv4
+      1 ->
+        {:ok, _addr_port} = :gen_tcp.recv(serverSocket, 6, 100)
+
+      3 ->
+        # domain name
+        {:ok, dis} = :gen_tcp.recv(serverSocket, 0, 100)
+        BuffLog.add({:discarded, dis})
+
+      4 ->
+        # ipv6
+        {:ok, dis} = :gen_tcp.recv(serverSocket, 0, 100)
+        BuffLog.add({:discarded, dis})
+    end
 
     :ok
   end
