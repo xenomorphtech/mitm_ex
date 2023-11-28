@@ -24,7 +24,7 @@ defmodule Mitme.Acceptor.Supervisor do
 
     IO.inspect(children)
 
-    supervise(children, strategy: :one_for_one)
+    supervise(children, [strategy: :one_for_one, max_restarts: 10000, seconds: 1])
   end
 end
 
