@@ -102,7 +102,7 @@ defmodule Mitme.Acceptor do
 end
 
 defmodule Mitme.Gsm do
-  use GenServer
+  use GenServer, restart: :temporary
   import Kernel, except: [send: 2]
 
   def start_link(type) do
