@@ -18,7 +18,7 @@ defmodule DNS.Server2 do
 
   @impl true
   def init(opts) do
-    {:ok, udp_server} = :gen_udp.open(2053, active: true, mode: :binary)
+    {:ok, udp_server} = :gen_udp.open(opts[:port] || 2053, active: true, mode: :binary)
 
     state = Map.merge(opts, %{udp_server: udp_server, callees: %{}})
     {:ok, state}
@@ -49,7 +49,7 @@ defmodule DNS.Server2 do
     dec = DNS.Packet.parse(request)
     IO.inspect({:request, dec.questions})
 
-    query = Enum.find(dec.questions, &(&1.type == :A))
+    query = Enum.find(dec.questions, &(&1.type in [:A]))
 
     name =
       case query do
@@ -173,7 +173,7 @@ defmodule DNS.TCPWorker do
     :inet.setopts(tcp_socket, [{:nodelay, true}, {:active, false}, :binary, {:packet, 2}])
     :ok = :gen_tcp.send(tcp_socket, request)
     {:ok, response} = :gen_tcp.recv(tcp_socket, 0)
-    # IO.inspect(response, limit: 9999)
+    IO.inspect(:dns_got_response, limit: 9999)
 
     send(parent, {:reply, response_dest, response})
     :gen_tcp.close(tcp_socket)

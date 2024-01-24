@@ -114,8 +114,8 @@ defmodule Mitme.Gsm do
     {:ok, params}
   end
 
-  def handle_info({:ssl_closed, _}, state) do
-    IO.puts("ssl connection closed (close)")
+  def handle_info({:ssl_closed, _} =  s, state) do
+    IO.puts("ssl connection closed (close) #{inspect s} #{inspect state}")
     %{dest: servs, source: clients} = state
     con_close(servs)
     con_close(clients)
@@ -302,22 +302,38 @@ defmodule Mitme.Gsm do
     end
 
     clientSocket =
-      if state.type == :ssl do
-        # gotta get the sni here
-        IO.inspect("doing ssl handhsake")
+      case state do
+        %{type: :ssl, cert: {cert_file, pem_file}} ->
+          # TODO: backwards compatibility, delete
+          IO.inspect("doing ssl handhsake")
 
-        {:ok, socket} =
-          :ssl.handshake(orig_clientSocket, [
-            {:active, true},
-            {:certfile, 'private/cert.pem'},
-            {:keyfile, 'private/key.pem'}
-          ])
+          {:ok, socket} =
+            :ssl.handshake(orig_clientSocket, [
+              {:active, true},
+              {:certfile, cert_file |> :binary.bin_to_list()},
+              {:keyfile, pem_file |> :binary.bin_to_list()}
+            ])
 
-        :ssl.setopts(socket, [{:active, true}, :binary])
-        socket
-      else
-        :ok = :inet.setopts(orig_clientSocket, [{:active, true}, :binary, {:nodelay, true}])
-        orig_clientSocket
+          :ssl.setopts(socket, [{:active, true}, :binary])
+          socket
+
+        %{type: :ssl} ->
+          # gotta get the sni here
+          IO.inspect("doing ssl handhsake")
+
+          {:ok, socket} =
+            :ssl.handshake(orig_clientSocket, [
+              {:active, true},
+              {:certfile, 'private/cert.pem'},
+              {:keyfile, 'private/key.pem'}
+            ])
+
+          :ssl.setopts(socket, [{:active, true}, :binary])
+          socket
+
+        _ ->
+          :ok = :inet.setopts(orig_clientSocket, [{:active, true}, :binary, {:nodelay, true}])
+          orig_clientSocket
       end
 
     # IO.inspect({:source_ip, state, source_ip})
@@ -334,7 +350,7 @@ defmodule Mitme.Gsm do
 
     # IO.inspect({:uplinks, uplinks})
 
-    #IO.inspect({:real_dest, state[:real_dest], state})
+    # IO.inspect({:real_dest, state[:real_dest], state})
 
     destAddrBin =
       case state[:real_dest] do
@@ -502,12 +518,12 @@ defmodule Mitme.Gsm do
       3 ->
         # domain name
         {:ok, dis} = :gen_tcp.recv(serverSocket, 0, 100)
-        BuffLog.add({:discarded, dis})
+        #BuffLog.add({:discarded, dis})
 
       4 ->
         # ipv6
         {:ok, dis} = :gen_tcp.recv(serverSocket, 0, 100)
-        BuffLog.add({:discarded, dis})
+        #BuffLog.add({:discarded, dis})
     end
 
     :ok
@@ -527,8 +543,9 @@ defmodule Mitme.Gsm do
     {:ok, realsocketreply} = :gen_tcp.recv(serverSocket, 10)
 
     case realsocketreply do
-      <<5, 0, 0, 1, _, _, _, _, _, _>> -> 
+      <<5, 0, 0, 1, _, _, _, _, _, _>> ->
         nil
+
       _ ->
         IO.inspect({"discarted reply from real sock server:", realsocketreply})
     end
