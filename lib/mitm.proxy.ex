@@ -632,7 +632,7 @@ defmodule Mitme.Gsm do
         nil
       end
 
-    IO.inspect(auth)
+    #IO.inspect(auth)
 
     {:ok, moredata} = :gen_tcp.recv(clientSocket, 0)
 
