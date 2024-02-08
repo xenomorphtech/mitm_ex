@@ -115,7 +115,7 @@ defmodule Mitme.Gsm do
   end
 
   def handle_info({:ssl_closed, _} =  s, state) do
-    IO.puts("ssl connection closed (close) #{inspect s} #{inspect state}")
+    #IO.puts("ssl connection closed (close) #{inspect s} #{inspect state}")
     %{dest: servs, source: clients} = state
     con_close(servs)
     con_close(clients)
@@ -130,7 +130,9 @@ defmodule Mitme.Gsm do
   end
 
   def handle_info({:tcp_closed, _}, state) do
-    IO.puts("connection closed (close)")
+  
+    #IO.puts("connection closed (close)")
+    
     %{dest: servs, source: clients} = state
     con_close(servs)
     con_close(clients)
@@ -148,7 +150,7 @@ defmodule Mitme.Gsm do
     %{dest: servs, source: clients} = state
     :gen_tcp.close(servs)
     :gen_tcp.close(clients)
-    IO.puts("connection closed (error)")
+    #IO.puts("connection closed (error)")
 
     module = state[:module]
 
@@ -362,7 +364,7 @@ defmodule Mitme.Gsm do
 
     {:ok, serverSocket} = tcp_connect({destAddrBin, destPort}, uplinks, source_ip)
 
-    IO.puts("tcp connected")
+    #IO.puts("tcp connected")
 
     serverSocket =
       if state[:type] == :ssl do
