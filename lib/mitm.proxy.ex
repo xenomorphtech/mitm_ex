@@ -285,13 +285,7 @@ defmodule Mitme.Gsm do
     router = state[:router]
     state = Map.put(state, :proxy_auth, auth)
 
-    state =
-      try do
-        Map.merge(state, router.route(state, sourceAddr, destAddrBin, destPort))
-      catch
-        :error, :undef ->
-          Map.merge(state, router.route(sourceAddr, destAddrBin, destPort))
-      end
+    state = Map.merge(state, router.route(state, sourceAddr, destAddrBin, destPort))
 
     module = state.module
 
