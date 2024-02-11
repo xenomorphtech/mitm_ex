@@ -448,7 +448,7 @@ defmodule Mitme.Gsm do
               opts
             end
 
-          IO.inspect(opts)
+          # IO.inspect(opts)
 
           {:ok, serverSocket} = :gen_tcp.connect(to_charlist(destAddrBin), destPort, opts)
 
