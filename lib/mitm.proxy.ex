@@ -301,7 +301,7 @@ defmodule Mitme.Gsm do
       case state do
         %{type: :ssl, cert: {cert_file, pem_file}} ->
           # TODO: backwards compatibility, delete
-          IO.inspect("doing ssl handhsake")
+          IO.inspect("doing ssl handhsake with custom certs")
 
           {:ok, socket} =
             :ssl.handshake(orig_clientSocket, [
@@ -309,6 +309,8 @@ defmodule Mitme.Gsm do
               {:certfile, cert_file |> :binary.bin_to_list()},
               {:keyfile, pem_file |> :binary.bin_to_list()}
             ])
+
+            IO.inspect "handshake done"
 
           :ssl.setopts(socket, [{:active, true}, :binary])
           socket
@@ -346,7 +348,7 @@ defmodule Mitme.Gsm do
 
     # IO.inspect({:uplinks, uplinks})
 
-    # IO.inspect({:real_dest, state[:real_dest], state})
+    #IO.inspect({:real_dest, state[:real_dest], state})
 
     destAddrBin =
       case state[:real_dest] do
@@ -496,7 +498,7 @@ defmodule Mitme.Gsm do
               uplink.password::binary>>
           )
 
-        {:ok, <<1, 0>>} = :gen_tcp.recv(serverSocket, 2, 30_000)
+        {:ok, <<_, 0>>} = :gen_tcp.recv(serverSocket, 2, 60_000)
     end
 
     # assume IPV4

@@ -47,42 +47,79 @@ defmodule DNS.Server2 do
     # IO.inspect(request, limit: 99999)
 
     dec = DNS.Packet.parse(request)
-    IO.inspect({:request, dec.questions})
+    #IO.inspect({:request, dec.questions})
 
-    query = Enum.find(dec.questions, &(&1.type in [:A]))
+    query_a = Enum.find(dec.questions, &(&1.type in [:A, :UNKNOWN]))
+    query_aaaa = Enum.find(dec.questions, &(&1.type in [:AAAA]))
 
     name =
-      case query do
-        %{name: name} ->
-          name
-
-        _ ->
-          nil
-      end
+      (query_a && query_a.name) ||
+        (query_aaaa && query_aaaa.name)
 
     map = hardcoded = Map.get(static_names, name)
 
-    IO.puts("dns request: #{name}")
+    IO.puts("dns request: #{name} #{!!query_a} #{!!query_aaaa}")
 
-    if !hardcoded do
-      spawn(DNS.TCPWorker, :init, [
-        request,
-        {host, port},
-        %{host: state.uplink_server, uplinks: state[:proxy]},
-        self()
-      ])
-    else
-      packet = DNS.Packet.to_binary(make_reply(dec.header.id, name, hardcoded))
-      IO.puts("sending crafted response")
+    cond do
+      !!query_a ->
+        ip = GenServer.call(DNSCache, {:resolve, name})
 
-      :gen_udp.send(
-        udp_server,
-        {host, port},
-        packet
-      )
+        {:ok, ip_t} = :inet.parse_address(String.to_charlist(ip))
+
+        packet = DNS.Packet.to_binary(make_reply(dec.header.id, name, ip_t))
+        IO.puts("sending crafted response #{name} => #{ip}")
+
+        :gen_udp.send(
+          udp_server,
+          {host, port},
+          packet
+        )
+
+      !!query_aaaa ->
+        #   ip = GenServer.call(DNSCache, {:resolve, name})
+
+        #   {:ok, ip_t} = :inet.parse_address(String.to_charlist(ip))
+
+        #   packet = DNS.Packet.to_binary(make_reply(dec.header.id, name, ip_t))
+        #   IO.puts("sending crafted response #{name} => #{ip}")
+
+        #   :gen_udp.send(
+        #     udp_server,
+        #     {host, port},
+        #     packet
+        #   )
+
+        nil
+
+      true ->
+        nil
     end
 
     {:noreply, state}
+  end
+
+  def make_nodata(id, domain) do
+    %DNS.Packet{
+      additionals: [],
+      answers: [],
+      authorities: [],
+      header: %DNS.Packet.Header{
+        additional_count: 0,
+        answer_count: 0,
+        authoritative_answer: false,
+        authority_count: 0,
+        id: id,
+        operation_code: 0,
+        query_response: true,
+        question_count: 1,
+        recursion_available: true,
+        recursion_desired: true,
+        reserved: 0,
+        response_code: 0,
+        truncated_message: false
+      },
+      questions: [%DNS.Packet.Question{name: domain, type: :AAAA}]
+    }
   end
 
   def make_reply(id, domain, addr) do
